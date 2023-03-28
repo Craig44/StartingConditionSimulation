@@ -153,7 +153,7 @@ Type get_SPR(Type F, vector<Type>& sel, Type& natural_mortality, vector<Type>& w
   vector<Type> Za = natural_mortality + sel * F;
   vector<Type> Sa = exp(-Za);
   Type SPR = Na * exp(-Za(0) * propZ_ssb) * waa(0) * paa(0);
-  for(unsigned age_iter = 1; age_iter < ages.size() * 4; ++age_iter) {
+  for(unsigned age_iter = 1; age_iter < (ages.size() * 4); ++age_iter) {
     if(age_iter >= ages.size() ) {
       SPR += Na * exp(-Za(ages.size() - 1) * propZ_ssb) * waa(ages.size() - 1) * paa(ages.size() - 1);
       Na *= Sa(ages.size() - 1);
@@ -227,18 +227,21 @@ Type get_SSBe(Type& F, vector<Type>& N_init, vector<Type>& sel, Type& natural_mo
   
   // Run annual cycle 
   for(int year_ndx = 1; year_ndx < n_runs; ++year_ndx) {
+    // Initial recruitment
+    N_equilibrium(0, year_ndx) = N_init(0);
+    // Ageing + Z
     for(int age_ndx = 1; age_ndx < ages.size() ; ++age_ndx) 
-      N_equilibrium(age_ndx, year_ndx) = N_equilibrium(age_ndx - 1, year_ndx - 1) * Sa(age_ndx - 1, year_ndx - 1);
+      N_equilibrium(age_ndx, year_ndx) = N_equilibrium(age_ndx - 1, year_ndx - 1) * Sa(age_ndx - 1);
     if(maxAgePlusGroup == 1) {
-      N_equilibrium(ages.size() - 1, year_ndx) = N_equilibrium(ages.size()  - 2, year_ndx - 1) * Sa(ages.size()  - 2, year_ndx - 1) +
-        N_equilibrium(ages.size()  - 1, year_ndx - 1) * Sa(ages.size()  - 1, year_ndx - 1);
+      N_equilibrium(ages.size() - 1, year_ndx) = N_equilibrium(ages.size()  - 2, year_ndx - 1) * Sa(ages.size()  - 2) +
+        N_equilibrium(ages.size()  - 1, year_ndx - 1) * Sa(ages.size()  - 1);
     }  
   }
   
   // Calculate SSBs an interpolation bewtween the year, starting with previous years Paritition
   Type ssbe = 0;
   for(int age_ndx = 0; age_ndx < ages.size(); ++age_ndx) 
-    ssbe += N_equilibrium(age_ndx, n_runs - 1) * exp(-Za(age_ndx, n_runs - 1) * propZ_ssb) * paa(age_ndx) * waa(age_ndx);
+    ssbe += N_equilibrium(age_ndx, n_runs - 1) * exp(-Za(age_ndx) * propZ_ssb) * paa(age_ndx) * waa(age_ndx);
     
   return(ssbe);
 }
@@ -401,7 +404,7 @@ Type objective_function<Type>::operator() () {
   // mean of random variables 
   for(year_ndx = 0; year_ndx < ln_ycs_est.size(); ++year_ndx) {
     //recruit_nll -= dnorm(lln_ycs_est(year_ndx), -0.5 * sigma_r * sigma_r, sigma_r, true) - ln_ycs_est(year_ndx);  // if random effect, will need this if Log-Normal distribution used
-    recruit_nll -= dnorm(ln_ycs_est(year_ndx), -0.5 * sigma_r * sigma_r, sigma_r, true);                          // if random effect, will need this if Log-Normal distribution used
+    recruit_nll -= dnorm(ln_ycs_est(year_ndx), Type(0.0), sigma_r, true);                          // if random effect, will need this if Log-Normal distribution used
     //recruit_nll -= dnorm(ln_ycs_est(year_ndx), Type(0.0), sigma_r, true);                          // if random effect, will need this if Log-Normal distribution used
   }
   
@@ -698,8 +701,9 @@ Type objective_function<Type>::operator() () {
           fishery_AF_fitted(age_ndx, iter, fishery_ndx) = temp_partition(age_ndx);
         }
         fishery_yearly_numbers(iter, fishery_ndx) = sum(temp_partition);
+        ++iter; 
+        
       }
-      ++iter; 
     }
   }
   
@@ -766,8 +770,8 @@ Type objective_function<Type>::operator() () {
    * 
    */
   vector<Type> ref_selectivity = fishery_selectivity.col(0).vec();
-  vector<Type> ref_catch_waa = stockMeanWeight.col(n_years - 1).vec();
-  vector<Type> ref_ssb_waa = catchMeanWeight.col(n_years - 1).vec();
+  vector<Type> ref_ssb_waa = stockMeanWeight.col(n_years - 1).vec();
+  vector<Type> ref_catch_waa = catchMeanWeight.col(n_years - 1).vec();
   vector<Type> ref_paa = propMat.col(n_years - 1).vec();
   Type propZ_ssb_ref = propZ_ssb(n_years - 1);
   // F0 is actual close to zero. The reason is when we use it for dYPR then 
@@ -775,24 +779,27 @@ Type objective_function<Type>::operator() () {
   Type F0 = 0.000000001;
   
   Type Fmax_nll = -1.0 * log(get_YPR(Fmax, ref_selectivity, natMor, ref_catch_waa, ages));
-  Type SPR_F0 = get_SPR(F0, ref_selectivity, natMor, ref_ssb_waa, ref_paa, propZ_ssb_ref, ages);
-  Type SPR_F40 = get_SPR(F40, ref_selectivity, natMor, ref_catch_waa, ref_paa, propZ_ssb_ref, ages);
-  Type SPR_F35 = get_SPR(F35, ref_selectivity, natMor, ref_catch_waa, ref_paa, propZ_ssb_ref, ages);
-  Type SPR_F30 = get_SPR(F30, ref_selectivity, natMor, ref_catch_waa, ref_paa, propZ_ssb_ref, ages);
+  Type SPR_F0 = get_SPR(Type(0.0), ref_selectivity, natMor, ref_ssb_waa, ref_paa, propZ_ssb_ref, ages);
+  Type SPR_F40 = get_SPR(F40, ref_selectivity, natMor, ref_ssb_waa, ref_paa, propZ_ssb_ref, ages);
+  Type SPR_F35 = get_SPR(F35, ref_selectivity, natMor, ref_ssb_waa, ref_paa, propZ_ssb_ref, ages);
+  Type SPR_F30 = get_SPR(F30, ref_selectivity, natMor, ref_ssb_waa, ref_paa, propZ_ssb_ref, ages);
   Type F40_nll = (0.4 * SPR_F0 - SPR_F40) * (0.4 * SPR_F0 - SPR_F40);
   Type F35_nll = (0.35 * SPR_F0 - SPR_F35) * (0.35 * SPR_F0 - SPR_F35);
   Type F30_nll = (0.3 * SPR_F0 - SPR_F30) * (0.3 * SPR_F0 - SPR_F30);
 
   // F 0.1
-  /*
+  
   Type dYPR_F0 = get_dYPR(F0, ref_selectivity, natMor, ref_catch_waa, ages); // almost zero
   Type dYPR_F_tilde = get_dYPR(F_0_1, ref_selectivity, natMor, ref_catch_waa, ages);
   Type F_0_1_nll = (0.1 * dYPR_F0 - dYPR_F_tilde) * (0.1 * dYPR_F0 - dYPR_F_tilde);
-   */
+   
   // F-MSY
-  
-  
-  Type joint_nll = fishery_comp_nll + survey_comp_nll + survey_index_nll + recruit_nll + catch_nll + init_age_dev_nll;// + Fmax_nll + F40_nll + F35_nll + F30_nll;// + F_0_1_nll;
+  Type SPR_msy = get_SPR(Fmsy, ref_selectivity, natMor, ref_ssb_waa, ref_paa, propZ_ssb_ref, ages);
+  Type YPR_msy = get_YPR(Fmsy, ref_selectivity, natMor, ref_catch_waa, ages);
+  Type B_msy = get_SSBe(Fmsy, equilibrium_at_age, ref_selectivity, natMor, ref_ssb_waa, ages, ref_paa, propZ_ssb_ref, ages.size() * 2, maxAgePlusGroup);
+  Type F_msy_nll = (-1.0 * log((YPR_msy * B_msy)/SPR_msy));
+    
+  Type joint_nll = fishery_comp_nll + survey_comp_nll + survey_index_nll + recruit_nll + catch_nll + init_age_dev_nll + Fmax_nll + F40_nll + F35_nll + F30_nll + F_0_1_nll + F_msy_nll;
   
   if (isNA(joint_nll))
     error("joint_nll = NA");
@@ -856,7 +863,18 @@ Type objective_function<Type>::operator() () {
   REPORT( F40 );
   REPORT( F35 );
   REPORT( F30 );
+  REPORT( F_0_1 );
+  REPORT( Fmsy );
+  REPORT( YPR_msy);
+  REPORT( SPR_msy);
+  REPORT( B_msy);
   
+  REPORT( Fmax_nll );
+  REPORT( F40_nll );
+  REPORT( F35_nll );
+  REPORT( F30_nll );
+  REPORT( F_0_1_nll );
+  REPORT( F_msy_nll );
   
   ADREPORT(Binit);
   ADREPORT(B0);

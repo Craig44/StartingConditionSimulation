@@ -13,7 +13,7 @@ library(reshape2)
 # Based Life-history params for Long-lived Rock fish from Wetzel and Punt
 # what about scale parameters like R0?
 fast_bio = list(
-  ages = 0:50,
+  ages = 1:50,
   L_inf = 58,
   K = 0.133,
   t0 = 0,
@@ -37,7 +37,7 @@ fast_bio = list(
 # Based Life-history params for Long-lived Rock fish from Wetzel and Punt
 # what about scale parameters like R0?
 medium_bio = list(
-  ages = 0:50,
+  ages = 1:50,
   L_inf = 34,
   K = 0.115,
   t0 = 0,
@@ -61,7 +61,7 @@ medium_bio = list(
 # Based Life-history params for Long-lived Rock fish from Wetzel and Punt
 # what about scale parameters like R0?
 slow_bio = list(
-  ages = 0:100,
+  ages = 1:100,
   L_inf = 64,
   K = 0.047,
   t0 = 0,
@@ -71,9 +71,9 @@ slow_bio = list(
   m_a50 = 19.6,
   m_ato95 = 6.1,
   f_a50 = 15,
+  f_ato95 = 7,
   s_ato95 = 7,
   s_a50 = 10,
-  f_ato95 = 7,
   sigma = 0.6,
   h = 0.5,
   sigma_r = 0.6,

@@ -23,14 +23,14 @@ DIR$tmb = file.path("..", "TMB")
 get_spr <- function(F_tilde, fishery_sel, M, waa, paa, ages, prop_Z = 0.5) {
   Za = F_tilde * fishery_sel + M
   Na = 1;
-  SPR = Na * waa[1] * paa[1]
+  SPR = Na * exp(-Za[1] * prop_Z) * waa[1] * paa[1]
   for(age_iter in 2:(length(ages)*4)) {
     if(age_iter > length(ages)) {
+      SPR = SPR + Na * exp(-Za[length(ages)] * prop_Z) * waa[length(ages)] * paa[length(ages)]
       Na = Na * exp(-Za[length(ages)]);
-      SPR = SPR + Na * waa[length(ages)] * paa[length(ages)]
     } else {
+      SPR = SPR + Na * exp(-Za[age_iter] * prop_Z) * waa[age_iter] * paa[age_iter]
       Na = Na * exp(-Za[age_iter]);
-      SPR = SPR + Na * waa[age_iter] * paa[age_iter]
     }
     
   }
@@ -62,7 +62,10 @@ get_SSBe <- function(F_tilde, fishery_sel, M, waa, paa, ages, Ninit, plus_group 
       N_equilibrium[length(ages), year_ndx] = N_equilibrium[length(ages) - 1, year_ndx - 1] * exp(-Za[length(ages) - 1]) + N_equilibrium[length(ages), year_ndx - 1] * exp(-Za[length(ages)]) 
   }
   SSBe = sum(as.numeric(N_equilibrium[,n_runs]) * exp(-Za * prop_Z) * waa * paa)
-  
+  SSBe_previous = sum(as.numeric(N_equilibrium[,n_runs - 1]) * exp(-Za * prop_Z) * waa * paa)
+  if(abs(SSBe - SSBe_previous) > (SSBe * 0.01)) {
+    warning("SSB equilibrium calculation may need to run for longer than input n_runs. We identified a difference between the last and second to last SSB values greater than 1%")
+  }
   return(SSBe)
 }
 #' get_ypr 
@@ -163,7 +166,8 @@ find_F_max <- function(fishery_sel, M, waa, ages, F_range = c(0.00001, 1.5)) {
 #' Find a F that achieves MSY
 #' @param fishery_sel vector of fishing selectivities
 #' @param M vector of natural mortality
-#' @param waa vector of weight at age
+#' @param catch_waa vector of weight at age for catch/Yield calculation
+#' @param ssb_waa vector of weight at age for catch/Yield calculation
 #' @param paa vector of proportions mature by age
 #' @param ages vector of ages - the last age is assumed to be a plus group
 #' @param Ninit vector of initial numbers at age
@@ -172,22 +176,22 @@ find_F_max <- function(fishery_sel, M, waa, ages, F_range = c(0.00001, 1.5)) {
 #' @param n_runs number of annual cycles to calculate equilibrium SSB for a given F
 #' @param F_range vector of two values specifying the range of F's to optimise over.
 #' @return F_msy  and other quantities
-find_F_msy <- function(fishery_sel, M, waa, paa, ages, Ninit, plus_group = T, prop_Z = 0.5, n_runs = 100, F_range = c(0.00001, 1.5)) {
+find_F_msy <- function(fishery_sel, M, catch_waa, ssb_waa, paa, ages, Ninit, plus_group = T, prop_Z = 0.5, n_runs = 100, F_range = c(0.00001, 1.5)) {
   
-  nll_fmsy <- function(ln_F_tilde, fishery_sel, M, waa, paa, ages, Ninit, plus_group, prop_Z, n_runs) {
+  nll_fmsy <- function(ln_F_tilde, fishery_sel, M, catch_waa, ssb_waa, paa, ages, Ninit, plus_group, prop_Z, n_runs) {
     this_F = exp(ln_F_tilde)
-    YPR = get_ypr(this_F, fishery_sel, M, waa, ages);
-    SSBe = get_SSBe(this_F, fishery_sel, M, waa, paa, ages, Ninit, plus_group, prop_Z, n_runs)
-    SPR = get_spr(this_F, fishery_sel, M, waa, paa, ages, prop_Z)
+    YPR = get_ypr(this_F, fishery_sel, M, catch_waa, ages);
+    SSBe = get_SSBe(this_F, fishery_sel, M, ssb_waa, paa, ages, Ninit, plus_group, prop_Z, n_runs)
+    SPR = get_spr(this_F, fishery_sel, M, ssb_waa, paa, ages, prop_Z)
     return(-1.0 * log((YPR * SSBe)/SPR))
   }
   
   # optimes
-  mle_par = optimise(interval = c(log(F_range[1]), log(F_range[2])), f = nll_fmsy, Ninit = Ninit, plus_group = plus_group, prop_Z = prop_Z, n_runs = n_runs, fishery_sel = fishery_sel, M = M, waa = waa, paa = paa, ages = ages)
+  mle_par = optimise(interval = c(log(F_range[1]), log(F_range[2])), f = nll_fmsy, Ninit = Ninit, plus_group = plus_group, prop_Z = prop_Z, n_runs = n_runs, fishery_sel = fishery_sel, M = M, catch_waa = catch_waa, ssb_waa = ssb_waa, paa = paa, ages = ages)
   F_msy = exp(mle_par$minimum)
-  YPR = get_ypr(F_msy, fishery_sel, M, waa, ages);
-  Bmsy = get_SSBe(F_msy, fishery_sel, M, waa, paa, ages, Ninit, plus_group, prop_Z, n_runs);
-  SPR = get_spr(F_msy, fishery_sel, M, waa, paa, ages, prop_Z)
+  YPR = get_ypr(F_msy, fishery_sel, M, catch_waa, ages);
+  Bmsy = get_SSBe(F_msy, fishery_sel, M, ssb_waa, paa, ages, Ninit, plus_group, prop_Z, n_runs);
+  SPR = get_spr(F_msy, fishery_sel, M, ssb_waa, paa, ages, prop_Z)
   
   return(list(F_msy = F_msy, Bmsy = Bmsy, SPR = SPR, YPR = YPR, mle_par = mle_par))
 }
