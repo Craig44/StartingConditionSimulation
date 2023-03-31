@@ -9,14 +9,24 @@ bool isNA(Type x){
 /* Parameter transform */
 template <class Type>
 Type f(Type x){return Type(2)/(Type(1) + exp(-Type(2) * x)) - Type(1);}
+
+// Zerofun functions see - for a discussion on this https://github.com/kaskr/adcomp/issues/7
+template<class Type>
+Type posfun(Type x, Type eps, Type &pen) {
+  pen += CppAD::CondExpLt(x,eps,Type(0.01)*pow(x-eps,2),Type(0));
+  Type xp = -(x/eps-1);
+  return CppAD::CondExpGe(x,eps,x,
+                          eps*(1/(1+xp+pow(xp,2)+pow(xp,3)+pow(xp,4)+pow(xp,5))));
+}
+
 /*
- * 
- */
 template<class Type>
 Type posfun(Type x, Type eps, Type &pen){
   pen += CppAD::CondExpLt(x,eps,Type(0.01)*pow(x-eps,2),Type(0));
   return CppAD::CondExpGe(x,eps,x,eps/(Type(2)-x/eps));
 }
+ */
+
 /*
  * 
  */
@@ -69,6 +79,28 @@ template <class Type>
 vector<Type> crl(vector<Type>& x) { 
   return log(x / geo_mean(x));
 }
+
+// https://github.com/timjmiller/wham/blob/master/src/age_comp_sim.hpp
+template<class Type>
+vector<Type> rmultinom_alt(vector<Type> prob, Type N)
+{
+  //multinomial
+  int dim = prob.size();
+  vector<Type> x(dim);
+  int Nint = CppAD::Integer(N);
+  x.setZero();
+  for(int i = 0; i < Nint; i++)
+  {
+    Type y = runif(0.0,1.0);
+    for(int a = 0; a < dim; a++) if(y < prob.head(a+1).sum())
+    {
+      x(a) += 1.0;
+      break;
+    }
+  }
+  return x;
+}
+
 /*
  * rmultinomm - for simulate call
  */
@@ -281,7 +313,7 @@ Type objective_function<Type>::operator() () {
   DATA_ARRAY_INDICATOR(keep_fishery_comp, fishery_AF_obs);
   
   DATA_IVECTOR(ycs_estimated);    // 1 = estimated, 0 = ignore
-  DATA_INTEGER(standardise_ycs);  // 1 = yes, 0 = No
+  DATA_INTEGER(standardise_ycs);  // 0 = No, 1 = YCS divide by mean (Haist standardisation), 2 = 
   DATA_INTEGER(F_method);         // 0 = estimate F's as free parameters, 1 = Hybrid method
   DATA_SCALAR(F_max);                 // max F = 2.56
   DATA_INTEGER(F_iterations);         // should be between 2-5
@@ -391,7 +423,7 @@ Type objective_function<Type>::operator() () {
   
   for(year_ndx = 0; year_ndx < n_years; ++year_ndx) {
     if (ycs_estimated[year_ndx] == 1) {
-      ycs(year_ndx) = exp(ln_ycs_est(iter) -0.5 * sigma_r * sigma_r );
+      ycs(year_ndx) = exp(ln_ycs_est(iter));
       ++iter;
     } else {
       ycs(year_ndx) = 1.0;
@@ -404,7 +436,7 @@ Type objective_function<Type>::operator() () {
   // mean of random variables 
   for(year_ndx = 0; year_ndx < ln_ycs_est.size(); ++year_ndx) {
     //recruit_nll -= dnorm(lln_ycs_est(year_ndx), -0.5 * sigma_r * sigma_r, sigma_r, true) - ln_ycs_est(year_ndx);  // if random effect, will need this if Log-Normal distribution used
-    recruit_nll -= dnorm(ln_ycs_est(year_ndx), Type(0.0), sigma_r, true);                          // if random effect, will need this if Log-Normal distribution used
+    recruit_nll -= dnorm(ln_ycs_est(year_ndx), -0.5 * sigma_r * sigma_r , sigma_r, true);                          // if random effect, will need this if Log-Normal distribution used
     //recruit_nll -= dnorm(ln_ycs_est(year_ndx), Type(0.0), sigma_r, true);                          // if random effect, will need this if Log-Normal distribution used
   }
   
@@ -505,12 +537,15 @@ Type objective_function<Type>::operator() () {
   N(0, 0) = R0;
   vector<Type> equilibrium_at_age = N.col(0).vec();
   B0 = sum(N.col(0) * exp(-natMor * propZ_ssb(0))  * stockMeanWeight.col(0) * propMat.col(0));
+  vector<Type> init_Z(n_ages);
+  init_Z.fill(natMor);
   // Binit - which is the same as above but 
   if(estimate_F_init == 1) {
     //std::cerr << "applying F-init\n";
-    for(age_ndx = 0; age_ndx < n_ages; ++age_ndx) 
+    for(age_ndx = 0; age_ndx < n_ages; ++age_ndx) {
       N(age_ndx, 0) = R0 * exp(-(ages(age_ndx)) * (natMor + fishery_selectivity(age_ndx,0) * F_init));
-    
+      init_Z(age_ndx) += fishery_selectivity(age_ndx,0) * F_init;
+    }
     if(maxAgePlusGroup == 1)
       N(n_ages - 1, 0) = R0 * exp(- ages(n_ages - 1) * (natMor + fishery_selectivity(n_ages - 1,0) * F_init)) / (1.0 - exp(-(natMor + fishery_selectivity(n_ages - 1, 0) * F_init)));
     // Applying ageing
@@ -532,8 +567,8 @@ Type objective_function<Type>::operator() () {
     for(age_ndx =0; age_ndx < init_age_dev.size(); ++age_ndx)
       init_age_dev_nll -= dnorm(init_age_dev(age_ndx), Type(0.0), sigma_init_age_devs, true);            
   }
-  ssb(0) =  sum(N.col(0) * exp(-natMor * propZ_ssb(0))  * stockMeanWeight.col(0) * propMat.col(0));
-  Binit =  sum(N.col(0) * exp(-natMor * propZ_ssb(0))  * stockMeanWeight.col(0) * propMat.col(0));
+  ssb(0) =  (N.col(0).vec() * exp(-init_Z * propZ_ssb(0))  * stockMeanWeight.col(0).vec() * propMat.col(0).vec()).sum();
+  Binit =  (N.col(0).vec() * exp(-init_Z * propZ_ssb(0))  * stockMeanWeight.col(0).vec() * propMat.col(0).vec()).sum();
 
   // Some additionF stuff
   vector<Type> vulnerable_bio(n_fisheries);
@@ -547,6 +582,9 @@ Type objective_function<Type>::operator() () {
   Type interim_total_catch = 0;// interim catch over all fisheries in current year
   Type total_catch_this_year = 0;
   Type z_adjustment;
+  Type pen_posfun = 0; // this is passed to the utility posfun function and added to the likelihood as apenalty
+  Type eps_for_posfun = 0.00001; // used for the posfun object to scale values above zero
+  
   /*
    * Start Model
    */
@@ -713,16 +751,25 @@ Type objective_function<Type>::operator() () {
     if (survey_year_indicator(year_ndx) == 1) {
       // Prop at age + biomass index
       survey_index_nll -= survey_index_keep(iter) * dnorm(log(survey_obs(iter)), log(survey_index_fitted(iter)) - 0.5 * survey_sd(iter) * survey_sd(iter), survey_sd(iter), true);
+      //survey_index_nll -= survey_index_keep(iter) * dnorm(log(survey_obs(iter)), log(survey_index_fitted(iter)), survey_sd(iter), true);
+      
       //std::cout << "iter = " << iter << " val = " << survey_index_nll << " lower = " << survey_index_keep.cdf_lower(iter) << " upper = " << survey_index_keep.cdf_upper(iter) << " pnorm = " << log( pnorm(log(survey_obs(iter)), log(survey_index_fitted(iter)) - 0.5 * survey_sd(iter) * survey_sd(iter), survey_sd(iter)) )<< "\n";
       SIMULATE {
         survey_obs(iter) = exp(rnorm(log(survey_index_fitted(iter)) - 0.5 * survey_sd(iter) * survey_sd(iter), survey_sd(iter)));
       }   
       survey_AF_fitted.col(iter) /= survey_yearly_numbers(iter);
+      
+      // check 
+      for(int i = 0; i < survey_AF_fitted.dim[0]; ++i)
+        survey_AF_fitted(i, iter) = posfun(survey_AF_fitted(i, iter), eps_for_posfun, pen_posfun);
+      
       // Multinomial
       survey_comp_nll -= dmultinom(vector<Type>(survey_AF_obs.col(iter)), vector<Type>(survey_AF_fitted.col(iter)), true);
       SIMULATE {
         Type N_eff = sum(survey_AF_obs.col(iter));
-        survey_AF_obs.col(iter) = rmultinom(survey_AF_fitted.col(iter).vec(), N_eff);
+        //survey_AF_obs.col(iter) = rmultinom(survey_AF_fitted.col(iter).vec(), N_eff);
+        survey_AF_obs.col(iter) = rmultinom_alt(survey_AF_fitted.col(iter).vec(), N_eff);
+        
       }
       ++iter;
     }
@@ -737,12 +784,16 @@ Type objective_function<Type>::operator() () {
         for(age_ndx = 0; age_ndx < n_ages; ++age_ndx) {
           fishery_AF_fitted(age_ndx, iter, fishery_ndx) /= fishery_yearly_numbers(iter, fishery_ndx);
           temp_partition(age_ndx) = fishery_AF_fitted(age_ndx, iter, fishery_ndx);
+          // check 
+          temp_partition(age_ndx) = posfun(temp_partition(age_ndx), eps_for_posfun, pen_posfun);
           temp_partition_obs(age_ndx) = fishery_AF_obs(age_ndx, iter, fishery_ndx);
         }
         fishery_comp_nll -= dmultinom(temp_partition_obs, temp_partition, true);
         SIMULATE {
           Type N_eff = sum(temp_partition_obs);
-          temp_partition_obs = rmultinom(temp_partition, N_eff);
+          //temp_partition_obs = rmultinom(temp_partition, N_eff);
+          temp_partition_obs = rmultinom_alt(temp_partition, N_eff);
+          
           for(age_ndx = 0; age_ndx < n_ages; ++age_ndx) 
             fishery_AF_obs(age_ndx, iter, fishery_ndx) = temp_partition_obs(age_ndx);
         }
@@ -799,7 +850,7 @@ Type objective_function<Type>::operator() () {
   Type B_msy = get_SSBe(Fmsy, equilibrium_at_age, ref_selectivity, natMor, ref_ssb_waa, ages, ref_paa, propZ_ssb_ref, ages.size() * 2, maxAgePlusGroup);
   Type F_msy_nll = (-1.0 * log((YPR_msy * B_msy)/SPR_msy));
     
-  Type joint_nll = fishery_comp_nll + survey_comp_nll + survey_index_nll + recruit_nll + catch_nll + init_age_dev_nll + Fmax_nll + F40_nll + F35_nll + F30_nll + F_0_1_nll + F_msy_nll;
+  Type joint_nll = fishery_comp_nll + survey_comp_nll + survey_index_nll + recruit_nll + catch_nll + init_age_dev_nll + pen_posfun + Fmax_nll + F40_nll + F35_nll + F30_nll + F_0_1_nll + F_msy_nll;
   
   if (isNA(joint_nll))
     error("joint_nll = NA");
@@ -810,6 +861,7 @@ Type objective_function<Type>::operator() () {
   REPORT( sigma_r );
   REPORT( B0 );
   REPORT( F_init );
+  REPORT( init_Z );
   REPORT( Binit );
   REPORT( init_age_dev );
   REPORT( sigma_init_age_devs );

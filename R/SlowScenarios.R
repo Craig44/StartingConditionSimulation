@@ -1,12 +1,12 @@
 #'
-#' Catch 
+#' Slow biology scenario 
 #'
 source("AuxillaryFunctions.R")
 library(dplyr)
 library(ggplot2)
 library(reshape2)
 library(TMB)
-
+library(tidyr)
 ## Pass the OM generated data to the TMB model
 #sink(file = "compile_output.txt")
 compile(file = file.path(DIR$tmb, "AgeStructuredModel.cpp"), flags = "-Wignored-attributes -O3")
@@ -78,14 +78,14 @@ TMB_data$estimate_F_init = 0
 TMB_data$estimate_init_age_devs = 0
 TMB_data$n_init_age_devs = 1
 
-## fishery_probs
+## iniital fishery_probs
 fishery_probs = c(rep(this_bio$M * 1.5, 20), rep(this_bio$M, 40) )
 plot(years, fishery_probs, type = "l", lty = 2, lwd = 2)
 
 ## The same parameters as OM, to check for consistency
 OM_pars = list(
   ln_R0 = log(this_bio$R0),
-  ln_ycs_est =  rnorm(sum(TMB_data$ycs_estimated),  0, this_bio$sigma_r),
+  ln_ycs_est =  rnorm(sum(TMB_data$ycs_estimated),  -0.5 * this_bio$sigma_r * this_bio$sigma_r, this_bio$sigma_r),
   ln_sigma_r = log( this_bio$sigma_r),
   ln_extra_survey_cv = log(0.0001),
   ln_F_init = log(0.01),
@@ -145,16 +145,16 @@ F_msy = find_F_msy(fishery_sel = fishery_sel, M = M, catch_waa = waa_catch, ssb_
 
 ###############
 ## Simulation
-## set first 20 years at 1.5 * F_msy
-## 20 years at F_40
-## 20 years at F_msy
+## Ramp first 20 years from 0.001 to  1.5 * F_msy
+## 40 years at F_40
 ###############
-## fishery_probs
-fishery_probs = c(rep(F_msy$F_msy * 1.5, 20), rep(F_40$F_ref, 40))
+## OM Fs
+fishery_probs = c(seq(from = 0.01, to = F_msy$F_msy * 1.5, length = 20), rep(F_40$F_ref, 40))
+
 plot(years, fishery_probs, type = "l", lty = 2, lwd = 2, ylim = c(0,0.18))
 OM_pars$ln_F = array(log(fishery_probs), dim = c(TMB_data$n_fisheries,TMB_data$n_years))
 # Set recruit devs at zero
-OM_pars$ln_ycs_est =  rep(0 + 0.5*this_bio$sigma_r^2,sum(TMB_data$ycs_estimated))# rnorm(sum(TMB_data$ycs_estimated),  0, this_bio$sigma_r)
+OM_pars$ln_ycs_est =  rep(0,sum(TMB_data$ycs_estimated))# rnorm(sum(TMB_data$ycs_estimated),  0, this_bio$sigma_r)
 TMB_data$F_method = 0
 ## re run the OM with true values so 
 ## we can check the log-likelihood calculations
@@ -173,7 +173,7 @@ n_sims = 100
 SSB_df = recruit_df = depletion_df = NULL
 for(sim_iter in 1:n_sims) {
   ## simulate recruitment
-  OM_pars$ln_ycs_est = rnorm(sum(TMB_data$ycs_estimated),  0.5*this_bio$sigma_r^2, this_bio$sigma_r)
+  OM_pars$ln_ycs_est = rnorm(sum(TMB_data$ycs_estimated),  -0.5*this_bio$sigma_r^2, this_bio$sigma_r)
   ## run model
   OM_obj <- MakeADFun(TMB_data, OM_pars, DLL= "AgeStructuredModel", checkParameterOrder = F, silent = T)
   OM_report = OM_obj$report()
@@ -229,7 +229,7 @@ for(sim_iter in 1:n_sims) {
   ## simulate initial age deviations
   OM_pars$ln_init_age_devs = rnorm(TMB_data$n_init_age_devs, 0, exp(OM_pars$ln_sigma_init_age_devs))
   ## simulate recruitment
-  OM_pars$ln_ycs_est = rnorm(sum(TMB_data$ycs_estimated),  0.5*this_bio$sigma_r^2, this_bio$sigma_r)
+  OM_pars$ln_ycs_est = rnorm(sum(TMB_data$ycs_estimated),  -0.5*this_bio$sigma_r^2, this_bio$sigma_r)
   ## run model
   OM_obj <- MakeADFun(TMB_data, OM_pars, DLL= "AgeStructuredModel", checkParameterOrder = F, silent = T)
   OM_report = OM_obj$report()
@@ -269,10 +269,32 @@ start_year = seq(from = min(years), to = min(years) + 20, by = 5)
 start_year = min(years) ## self test
 is_self_test = T
 SSB_df = recruit_df = depletion_df = NULL
-sim_survey_year_obs = survey_year_obs
-sim_fishery_year_obs = fishery_year_obs
+survey_year_obs = years
+fishery_year_obs = years
+sim_survey_year_obs = years
+sim_fishery_year_obs = years
+TMB_data$survey_year_indicator = as.integer(TMB_data$years %in% survey_year_obs)
+TMB_data$fishery_year_indicator = array(1, dim = c(length(TMB_data$years), TMB_data$n_fisheries))
+## alter observation containers
+TMB_data$survey_obs = rep(0, sum(TMB_data$survey_year_indicator))
+TMB_data$survey_cv = rep(0.15, sum(TMB_data$survey_year_indicator))
+TMB_data$survey_AF_obs = matrix(5, nrow = TMB_data$n_ages, ncol = sum(TMB_data$survey_year_indicator))
+TMB_data$fishery_AF_obs = array(5, dim = c(TMB_data$n_ages, sum(TMB_data$fishery_year_indicator), TMB_data$n_fisheries))
+convergence = matrix(T, ncol = length(start_year), nrow = n_sims)
 estimate_ycs_after = 1961
-full_nll_df = SSB_df = recruit_df = depletion_df = reference_df = simple_metrics = OM_SSB_df = survey_abundance_df = survey_select_df = fishery_select_df = survey_AF_df = survey_mean_age_df =  fishery_AF_df = fishery_mean_age_df = NULL
+MLE_pars_df = fishing_mortality_df = full_nll_df = SSB_df = recruit_df = depletion_df = reference_df = simple_metrics = OM_SSB_df = survey_abundance_df = survey_select_df = fishery_select_df = survey_AF_df = survey_mean_age_df =  fishery_AF_df = fishery_mean_age_df = NULL
+## don't estimate the last 10 year class parameters
+TMB_data$ycs_estimated[(length(TMB_data$ycs_estimated) - 11):length(TMB_data$ycs_estimated)] = 0
+## simulate recruitment
+OM_pars$ln_ycs_est = rnorm(sum(TMB_data$ycs_estimated),  -0.5*this_bio$sigma_r^2, this_bio$sigma_r)
+stochastic_recruitmnet = F
+#'
+#' Algorithm
+#' iterate over each start year EM
+#' Simulate the same OM for each EM n_sims times-set the seed
+#'
+#'
+sim_start_time = Sys.time()
 for(start_year_ndx in 1:length(start_year)) {
   cat("trialling start year ", start_year[start_year_ndx], "\n")
   EM_data = TMB_data
@@ -292,19 +314,20 @@ for(start_year_ndx in 1:length(start_year)) {
   EM_data$fishery_AF_obs = array(5, dim = c(EM_data$n_ages, length(sim_fishery_year_obs), EM_data$n_fisheries))
   EM_data$catches = array(1000, dim = c(EM_data$n_years, EM_data$n_fisheries))# this will be overriden in the simulate() call
   EM_data$catch_indicator = array(1, dim = c(EM_data$n_years, EM_data$n_fisheries))
-  EM_data$ycs_estimated = rep(0, EM_data$n_years)
-  EM_data$ycs_estimated[which(EM_data$years >= estimate_ycs_after)] = 1
-
+  EM_data$ycs_estimated = TMB_data$ycs_estimated[EM_year_ndx]
+  EM_data$ycs_estimated[which(EM_data$years < estimate_ycs_after)] = 0
   EM_data$catchMeanLength = EM_data$stockMeanLength = matrix(vonbert(this_bio$ages, this_bio$K, L_inf = this_bio$L_inf, t0 = this_bio$t0), byrow = F, ncol = EM_data$n_years, nrow = EM_data$n_ages)
   EM_data$propMat = matrix(logis_sel(this_bio$ages, this_bio$m_a50, this_bio$m_ato95), byrow = F, ncol = EM_data$n_years, nrow = EM_data$n_ages)
   EM_data$propZ_ssb = rep(0.5, EM_data$n_years)
   EM_data$propZ_survey = rep(0.5, EM_data$n_years)
-  EM_data$F_method = 0
+  EM_data$F_method = 1
   ## reset EM pars
-  EM_pars$ln_ycs_est =  rnorm(sum(EM_data$ycs_estimated),  0, this_bio$sigma_r)
-  EM_pars$ln_F = array(log(0.1), dim = c(EM_data$n_fisheries,EM_data$n_years))
+  EM_pars$ln_ycs_est =  rnorm(sum(EM_data$ycs_estimated),  -0.5*this_bio$sigma_r^2, this_bio$sigma_r)
+  EM_pars$ln_F = OM_pars$ln_F 
   EM_pars$ln_init_age_devs = 0
-  na_map = fix_pars(par_list = EM_pars, pars_to_exclude = c("ln_sigma_r", "ln_extra_survey_cv", "ln_F_init", "ln_init_age_devs", "ln_sigma_init_age_devs", "ln_ycs_est"))
+  EM_data$n_init_age_devs = 1
+  na_map = fix_pars(par_list = EM_pars, pars_to_exclude = c("ln_sigma_r", "ln_F", "ln_catch_sd" ,"ln_extra_survey_cv", "ln_F_init", "ln_init_age_devs", "ln_sigma_init_age_devs", "ln_Fmax", "ln_F40", "ln_F35", "ln_F30", "ln_Fmsy", "ln_F_0_1"))
+  #"logit_survey_ato95", "logit_f_ato95",
   for(sim_iter in 1:n_sims) {
     if(sim_iter %% 50 == 0)
       cat("simulation iterator ", sim_iter, "\n")
@@ -314,12 +337,17 @@ for(start_year_ndx in 1:length(start_year)) {
     set.seed(sim_iter)
     ## simulate initial age deviations
     OM_pars$ln_init_age_devs = rnorm(TMB_data$n_init_age_devs, 0, exp(OM_pars$ln_sigma_init_age_devs))
-    
     ## simulate recruitment
-    OM_pars$ln_ycs_est = rnorm(sum(TMB_data$ycs_estimated),  0.5*this_bio$sigma_r^2, this_bio$sigma_r)
-    ## 
-    EM_pars$ln_ycs_est = OM_pars$ln_ycs_est ## fix at true values
+    if(stochastic_recruitmnet)
+      OM_pars$ln_ycs_est = rnorm(sum(TMB_data$ycs_estimated),  -0.5*this_bio$sigma_r^2, this_bio$sigma_r)
     
+    ## 
+    EM_pars$ln_ycs_est = OM_pars$ln_ycs_est[which(EM_data$ycs_estimated == 1)] ## fix at true values
+    #EM_pars$logit_f_a50 =  OM_pars$logit_f_a50
+    EM_pars$logit_f_ato95 = OM_pars$logit_f_ato95
+    EM_pars$logit_survey_ato95 = OM_pars$logit_survey_ato95
+    
+    #EM_pars$logit_surveyQ =  OM_pars$logit_surveyQ
     ## if self-test don't do the initial age-devs or F-init
     if(is_self_test) {
       TMB_data$estimate_F_init = 0
@@ -330,9 +358,10 @@ for(start_year_ndx in 1:length(start_year)) {
     ## Simulate data
     OM_sim = OM_obj$simulate(complete = T)
     ## OM_true values
+    OM_sim$F_method = 1
     OM_true_obj <- MakeADFun(OM_sim, OM_pars, DLL= "AgeStructuredModel", checkParameterOrder = F, silent = T)
     OM_report = OM_true_obj$report()
-    OM_nll = data.frame(catch = OM_report$catch_nll, survey_ndx = OM_report$survey_index_nll, survey_AF = OM_report$survey_comp_nll, fishery_AF = OM_report$fishery_comp_nll)
+    OM_nll = data.frame(total = OM_true_obj$fn(), catch = OM_report$catch_nll, recruitment = OM_report$recruit_nll, survey_ndx = OM_report$survey_index_nll, survey_AF = OM_report$survey_comp_nll, fishery_AF = OM_report$fishery_comp_nll)
     OM_nll$model = "OM"
     OM_nll$start_year = start_year[start_year_ndx]
     OM_nll$sim_iter = sim_iter
@@ -340,10 +369,22 @@ for(start_year_ndx in 1:length(start_year)) {
     this_om_ssb = data.frame(years = full_years, SSB = OM_sim$ssb, sim_iter = sim_iter, start_year = start_year[start_year_ndx])
     OM_SSB_df = rbind(OM_SSB_df, this_om_ssb)
     ## Fill EM data with simulated data
-    EM_data$catches = matrix(OM_sim$catches[EM_year_ndx,], ncol = 1)
+    
+    #EM_data$catches = matrix(OM_sim$catches[EM_year_ndx,], ncol = 1)
+    EM_data$catches = matrix(OM_sim$pred_catches[EM_year_ndx,], ncol = 1)
+    
     EM_data$survey_obs = OM_sim$survey_obs[which(survey_year_obs %in% sim_survey_year_obs)]
     EM_data$survey_AF_obs = OM_sim$survey_AF_obs[,which(survey_year_obs %in% sim_survey_year_obs)]
     EM_data$fishery_AF_obs = array(OM_sim$fishery_AF_obs[, which(fishery_year_obs %in% sim_fishery_year_obs), 1], dim = c(length(EM_data$ages), length(sim_fishery_year_obs), 1))
+    ## for debugging you can change simulated obs with the true values.
+    use_expected_vals_for_observed = F
+    if(use_expected_vals_for_observed) {
+      EM_data$catches = matrix(OM_sim$pred_catches[EM_year_ndx,], ncol = 1)
+      EM_data$survey_obs = OM_sim$survey_index_fitted[which(survey_year_obs %in% sim_survey_year_obs)]
+      EM_data$survey_AF_obs = OM_sim$survey_AF_fitted[,which(survey_year_obs %in% sim_survey_year_obs)]
+      EM_data$fishery_AF_obs = array(OM_sim$fishery_AF_fitted[, which(fishery_year_obs %in% sim_fishery_year_obs), 1], dim = c(length(EM_data$ages), length(sim_fishery_year_obs), 1))
+    }
+    
     EM_data$estimate_F_init = 0
     EM_data$estimate_init_age_devs = 0
     
@@ -364,9 +405,13 @@ for(start_year_ndx in 1:length(start_year)) {
                            , error = function(e){e})
     
     if(inherits(try_improve, "error") | inherits(try_improve, "warning")) {
+      cat("Failed simulation ", sim_iter, "\n")
+      convergence[sim_iter, start_year_ndx] = F
       next;
     }
-    
+    ## extract estimate pars and save them in data frame
+    tmp_est_pars = data.frame(label = names(mle_spatial$par), value = mle_spatial$par, sim_iter = sim_iter, start_year = start_year[start_year_ndx])
+    MLE_pars_df = rbind(MLE_pars_df, tmp_est_pars)
     EM_rep = EM_obj$report(mle_spatial$par)
     tmp_Bzero = data.frame(B0 = EM_rep$B0,Binit = EM_rep$Binit, R0 = EM_rep$R0, terminal_depletion = EM_rep$ssb[length(EM_rep$ssb)] / EM_rep$B0 * 100, sim_iter = sim_iter, start_year = start_year[start_year_ndx], Finit = EM_rep$F_init)
     simple_metrics = rbind(simple_metrics, tmp_Bzero)
@@ -385,6 +430,9 @@ for(start_year_ndx in 1:length(start_year)) {
     survey_select_df = rbind(survey_select_df, this_srv_sel)
     this_fish_sel = data.frame(ages = ages, EM_selectivity = EM_rep$fishery_selectivity, OM_selectivity = OM_sim$fishery_selectivity, sim_iter = sim_iter, start_year = start_year[start_year_ndx])
     fishery_select_df = rbind(fishery_select_df, this_fish_sel)
+    ## fishing mortality
+    tmp_F_df = data.frame(years = years, EM_Fs = as.numeric(EM_rep$annual_Fs), OM_Fs = as.numeric(OM_sim$annual_Fs), sim_iter = sim_iter, start_year = start_year[start_year_ndx])
+    fishing_mortality_df = rbind(fishing_mortality_df, tmp_F_df)
     ## save reference points
     this_ref_df = data.frame(F30 = EM_rep$F30, F35 = EM_rep$F35, F40 = EM_rep$F40, F_0_1 = EM_rep$F_0_1, Fmsy = EM_rep$Fmsy, Fmax = EM_rep$Fmax, Bmsy = EM_rep$B_msy, B0 = EM_rep$B0, terminal_depletion = EM_rep$ssb[length(EM_rep$ssb)] / EM_rep$B0 * 100, 
                              sim_iter = sim_iter, start_year = start_year[start_year_ndx])
@@ -442,46 +490,33 @@ for(start_year_ndx in 1:length(start_year)) {
     fishery_mean_age_df = rbind(fishery_mean_age_df, mean_age_AF)
     
     # negative log likelihood
-    EM_nll = data.frame(catch = EM_rep$catch_nll, survey_ndx = EM_rep$survey_index_nll, survey_AF = EM_rep$survey_comp_nll, fishery_AF = EM_rep$fishery_comp_nll)
+    EM_nll = data.frame(total = mle_spatial$objective, catch = EM_rep$catch_nll, recruitment = EM_rep$recruit_nll, survey_ndx = EM_rep$survey_index_nll, survey_AF = EM_rep$survey_comp_nll, fishery_AF = EM_rep$fishery_comp_nll)
     EM_nll$model = "EM"
     EM_nll$start_year = start_year[start_year_ndx]
     EM_nll$sim_iter = sim_iter
     full_nll_df = rbind(full_nll_df, EM_nll, OM_nll)
   }
 }
+cat("Simulation run time = ", Sys.time() - sim_start_time, " minutes\n")
+unique(names(EM_obj$par))
+
+## look at fit to AFs
+plot(ages, EM_data$survey_AF_obs[,1]/colSums(EM_data$survey_AF_obs)[1], type = "p")
+lines(ages, EM_rep$survey_AF_fitted[,1], type = "l", col = "red", lwd = 2)
+plot(ages, EM_data$survey_AF_obs[,2]/colSums(EM_data$survey_AF_obs)[2], type = "p")
+lines(ages, EM_rep$survey_AF_fitted[,2], type = "l", col = "red", lwd = 2)
+plot(ages, EM_data$survey_AF_obs[,3]/colSums(EM_data$survey_AF_obs)[23], type = "p")
+lines(ages, EM_rep$survey_AF_fitted[,3], type = "l", col = "red", lwd = 2)
+plot(ages, EM_data$survey_AF_obs[,4]/colSums(EM_data$survey_AF_obs)[4], type = "p")
+lines(ages, EM_rep$survey_AF_fitted[,4], type = "l", col = "red", lwd = 2)
 
 ##########
-# Look at Biases and such
+# Look at Biases and Derived quantities
 ##########
-ggplot(reference_df, aes(x = start_year, y = F30, group = start_year)) +
-  geom_boxplot()
-
-ggplot(reference_df, aes(x = start_year, y = F35, group = start_year)) +
-  geom_boxplot()
-
-ggplot(reference_df, aes(x = start_year, y = F40, group = start_year)) +
-  geom_boxplot()
-
-ggplot(reference_df, aes(x = start_year, y = F_0_1, group = start_year)) +
-  geom_boxplot()
-
-ggplot(reference_df, aes(x = start_year, y = Fmsy, group = start_year)) +
-  geom_boxplot()
-
-ggplot(reference_df, aes(x = start_year, y = B0, group = start_year)) +
-  geom_boxplot() +
-  geom_hline(yintercept = OM_report$B0, linetype = "dashed", col ="red")# +
-  #ylim(c(1e7, 2e8))
-
-
-
-
-ggplot(reference_df, aes(x = start_year, y = terminal_depletion, group = start_year)) +
-  geom_boxplot()
-
-ggplot(reference_df, aes(x = start_year, y = Fmax, group = start_year)) +
-  geom_boxplot()
-
+ggplot(full_nll_df %>% pivot_longer(cols = c("total","catch","recruitment","survey_ndx","survey_AF","fishery_AF"), names_to ="component")) +
+  geom_boxplot(aes(x = model, y = value, col = model, fill = model)) +
+  facet_wrap(~component, scales = "free_y") +
+  theme_bw()
 
 ## Plot SSB
 ggplot() +
@@ -494,9 +529,17 @@ SSB_df = SSB_df %>% group_by(years, sim_iter, start_year) %>% mutate(RE = (OM_SS
 ggplot(data = SSB_df, aes(x = years, y = RE, group = years)) +
   geom_boxplot() +
   facet_wrap(~start_year) +
+  #ylim(-50,50) +
   geom_hline(yintercept = 0, linetype = "dashed", col ="red") +
-  ylim(0,NA) +
-  theme_bw()
+  theme_bw();
+
+# Plot RE in Fs
+fishing_mortality_df = fishing_mortality_df %>% group_by(years, sim_iter, start_year) %>% mutate(RE = (OM_Fs - EM_Fs) / OM_Fs * 100)
+ggplot(data = fishing_mortality_df, aes(x = years, y = RE, group = years)) +
+  geom_boxplot() +
+  facet_wrap(~start_year) +
+  geom_hline(yintercept = 0, linetype = "dashed", col ="red") +
+  theme_bw();
 
 ## Plot Recruitment
 ggplot() +
@@ -517,6 +560,7 @@ ggplot(fishery_select_df, aes(x = ages, y = (OM_selectivity - EM_selectivity) / 
   facet_wrap(~start_year) +
   geom_hline(yintercept = 0, linetype = "dashed", col ="red") +
   theme_bw()
+
 ## Survey selectivity
 ggplot(survey_select_df, aes(x = ages, y = (OM_selectivity - EM_selectivity) / OM_selectivity * 100, group = ages)) +
   geom_boxplot() +
@@ -567,4 +611,30 @@ ggplot(data = summarise_obs, aes(x = age, y = aggregated_resid, group= age)) +
   geom_hline(yintercept = 0, linetype = "dashed", col ="red") +
   theme_bw()
 
+### Reference points
+ggplot(reference_df, aes(x = start_year, y = F30, group = start_year)) +
+  geom_boxplot()
+
+ggplot(reference_df, aes(x = start_year, y = F35, group = start_year)) +
+  geom_boxplot()
+
+ggplot(reference_df, aes(x = start_year, y = F40, group = start_year)) +
+  geom_boxplot()
+
+ggplot(reference_df, aes(x = start_year, y = F_0_1, group = start_year)) +
+  geom_boxplot()
+
+ggplot(reference_df, aes(x = start_year, y = Fmsy, group = start_year)) +
+  geom_boxplot()
+
+ggplot(reference_df, aes(x = start_year, y = B0, group = start_year)) +
+  geom_boxplot() +
+  geom_hline(yintercept = OM_report$B0, linetype = "dashed", col ="red")# +
+#ylim(c(1e7, 2e8))
+
+ggplot(reference_df, aes(x = start_year, y = terminal_depletion, group = start_year)) +
+  geom_boxplot()
+
+ggplot(reference_df, aes(x = start_year, y = Fmax, group = start_year)) +
+  geom_boxplot()
 
