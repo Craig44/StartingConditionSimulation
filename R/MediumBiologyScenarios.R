@@ -1,5 +1,5 @@
 #'
-#' FlatBiologyScenario
+#' MediumBiologyScenario
 #'
 #'
 
@@ -17,11 +17,11 @@ compile(file = file.path(DIR$tmb, "AgeStructuredModel.cpp"), flags = "-Wignored-
 dyn.load(dynlib(file.path(DIR$tmb, "AgeStructuredModel")))
 #setwd(DIR$R)
 
-fig_dir = file.path(DIR$fig, "FlatBiology")
+fig_dir = file.path(DIR$fig, "MediumBiology")
 if(!dir.exists(fig_dir))
   dir.create(fig_dir)
 
-flat_bio = readRDS(file = file.path(DIR$data, "Fast_biology.RDS"))
+flat_bio = readRDS(file = file.path(DIR$data, "Medium_biology.RDS"))
 
 this_bio = flat_bio
 
@@ -273,7 +273,7 @@ ggplot(recruit_df, aes(x = years, y = ycs, group = sim_iter)) +
 
 
 ## look at 100 simulations with stochastic recruitment
-n_sims = 200
+n_sims = 100
 start_year = seq(from = min(years), to = min(years) + 20, by = 5)
 #start_year = min(years) ## self test
 is_self_test = T
