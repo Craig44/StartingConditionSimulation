@@ -293,13 +293,23 @@ convergence = matrix(T, ncol = length(start_year), nrow = n_sims)
 estimate_ycs_after = 1961
 MLE_pars_df = fishing_mortality_df = full_nll_df = SSB_df = recruit_df = depletion_df = reference_df = simple_metrics = OM_SSB_df = survey_abundance_df = survey_select_df = fishery_select_df = survey_AF_df = survey_mean_age_df =  fishery_AF_df = fishery_mean_age_df = NULL
 ## don't estimate the last 5 year class parameters
-TMB_data$ycs_estimated[(length(TMB_data$ycs_estimated) - 9):length(TMB_data$ycs_estimated)] = 0
+TMB_data$ycs_estimated[(length(TMB_data$ycs_estimated) - 7):length(TMB_data$ycs_estimated)] = 0
 ## simulate recruitment
 OM_pars$ln_ycs_est = rnorm(sum(TMB_data$ycs_estimated),  -0.5*this_bio$sigma_r^2, this_bio$sigma_r)
 stochastic_recruitmnet = F ## does each simulation generate a new recruitment trend
 TMB_data$n_init_age_devs = 1
 OM_pars$ln_init_age_devs = 0
 one_yr = two_yr = three_yr = four_yr = five_yr = six_yr = seven_yr = eight_yr = NULL
+
+OM_label = "Fast_OM1"
+output_data = file.path(DIR$data, OM_label)
+if(!dir.exists(output_data))
+  dir.create(output_data)
+# - OM1 - equilibrium N1
+# - OM2 - N1 X dev_a
+# - OM3 - N1 X exp(-(M + F_init))
+# - OM4 - N1 X exp(-(M + F_init)) X dev_a
+
 #'
 #' Algorithm
 #' iterate over each start year EM
@@ -542,6 +552,31 @@ lines(ages, EM_rep$survey_AF_fitted[,3], type = "l", col = "red", lwd = 2)
 plot(ages, EM_data$survey_AF_obs[,4]/colSums(EM_data$survey_AF_obs)[4], type = "p")
 lines(ages, EM_rep$survey_AF_fitted[,4], type = "l", col = "red", lwd = 2)
 
+## save R objects
+saveRDS(object = MLE_pars_df, file = file.path(output_data, "MLE_pars_df.RDS"))
+saveRDS(object = fishing_mortality_df, file = file.path(output_data, "fishing_mortality_df.RDS"))
+saveRDS(object = full_nll_df, file = file.path(output_data, "full_nll_df.RDS"))
+saveRDS(object = SSB_df, file = file.path(output_data, "SSB_df.RDS"))
+saveRDS(object = recruit_df, file = file.path(output_data, "recruit_df.RDS"))
+saveRDS(object = reference_df, file = file.path(output_data, "reference_df.RDS"))
+saveRDS(object = depletion_df, file = file.path(output_data, "depletion_df.RDS"))
+saveRDS(object = simple_metrics, file = file.path(output_data, "simple_metrics.RDS"))
+saveRDS(object = survey_abundance_df, file = file.path(output_data, "survey_abundance_df.RDS"))
+saveRDS(object = survey_select_df, file = file.path(output_data, "survey_select_df.RDS"))
+saveRDS(object = fishery_select_df, file = file.path(output_data, "fishery_select_df.RDS"))
+saveRDS(object = survey_AF_df, file = file.path(output_data, "survey_AF_df.RDS"))
+saveRDS(object = survey_mean_age_df, file = file.path(output_data, "survey_mean_age_df.RDS"))
+saveRDS(object = fishery_AF_df, file = file.path(output_data, "fishery_AF_df.RDS"))
+saveRDS(object = fishery_mean_age_df, file = file.path(output_data, "fishery_mean_age_df.RDS"))
+saveRDS(object = one_yr, file = file.path(output_data, "one_yr.RDS"))
+saveRDS(object = two_yr, file = file.path(output_data, "two_yr.RDS"))
+saveRDS(object = three_yr, file = file.path(output_data, "three_yr.RDS"))
+saveRDS(object = four_yr, file = file.path(output_data, "four_yr.RDS"))
+saveRDS(object = five_yr, file = file.path(output_data, "five_yr.RDS"))
+saveRDS(object = six_yr, file = file.path(output_data, "six_yr.RDS"))
+saveRDS(object = seven_yr, file = file.path(output_data, "seven_yr.RDS"))
+saveRDS(object = eight_yr, file = file.path(output_data, "eight_yr.RDS"))
+
 ##########
 # Look at Biases and Derived quantities
 ##########
@@ -564,6 +599,28 @@ ggplot(data = SSB_df, aes(x = years, y = RE, group = years)) +
   #ylim(-50,50) +
   geom_hline(yintercept = 0, linetype = "dashed", col ="red") +
   theme_bw();
+quant_RE_ssb = get_df_quantiles(SSB_df, group_vars = c("years", "start_year"), y_value = "RE", quants = c(0.025, 0.25, 0.4, 0.5, 0.6, 0.75, 0.975))
+
+ggplot(data = SSB_df, aes(x = years, y = RE, group = years)) +
+  geom_boxplot() +
+  facet_wrap(~start_year) +
+  #ylim(-50,50) +
+  geom_hline(yintercept = 0, linetype = "dashed", col ="red") +
+  theme_bw();
+
+ggplot(quant_RE_ssb, aes(x = years)) +
+  geom_line(aes(y=`50%`), linewidth = 1.1) +
+  geom_line(aes(y=`2.5%`), colour='red', alpha=0.2) + geom_line(aes(y=`97.5%`), colour='red', alpha=0.2) +
+  geom_ribbon(aes(ymin=`2.5%`, ymax=`97.5%`), fill='red', alpha=0.1) +
+  geom_line(aes(y=`25%`), colour='gold', alpha=0.8) + geom_line(aes(y=`75%`), colour='gold', alpha=0.8) +
+  geom_ribbon(aes(ymin=`25%`, ymax=`75%`), fill='gold', alpha=0.5) +
+  geom_line(aes(y=`40%`), colour='blue', alpha=0.5) + geom_line(aes(y=`60%`), colour='blue', alpha=0.5) +
+  geom_ribbon(aes(ymin=`40%`, ymax=`60%`), fill='blue', alpha=0.4) +
+  facet_wrap(~start_year) +
+  #ylim(-50,50) +
+  geom_hline(yintercept = 0, linetype = "dashed", col ="black", linewidth = 1.1) +
+  theme_bw() +
+  labs(y = "SSB", x = "Years")
 
 # Plot RE for estimated 1 yr olds
 one_yr = one_yr %>% group_by(years, sim_iter, start_year) %>% mutate(RE = (OM_numbers - EM_numbers) / OM_numbers * 100)

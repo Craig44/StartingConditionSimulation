@@ -10,7 +10,41 @@ DIR$base = getwd()
 DIR$data = file.path("..", "Data")
 DIR$fig = file.path("..", "Figures")
 DIR$tmb = file.path("..", "TMB")
-#'
+
+#' Q_sum_to_zero_QR
+#' calculate QR vector for sum to zero hard constraint
+#' @param N integer number of elements in vector that we want to sum = 0
+#' @return a vector length N * 2 that will be used by sum_to_zero_QR
+#' @export
+Q_sum_to_zero_QR <- function(N) {
+  Q_r = vector(length = N * 2);
+  
+  for(i in 1:(N - 1)) {
+    Q_r[i] = -sqrt((N-i)/(N-i+1.0));
+    Q_r[i+N] = 1.0 / sqrt((N-i) * (N-i+1));
+  }
+  return (Q_r);
+}
+
+#' sum_to_zero_QR
+#' take a vector of unconstrained values length (N - 1) and derive a vector of length N that sum = 0 using the QR method
+#' see here https://discourse.mc-stan.org/t/test-soft-vs-hard-sum-to-zero-constrain-choosing-the-right-prior-for-soft-constrain/3884
+#' @param x_raw vector of unconstrained values length N - 1
+#' @return a vector length N that sums = 0
+#' @export
+sum_to_zero_QR <- function(x_raw) {
+  N = length(x_raw) + 1;
+  Q_r = Q_sum_to_zero_QR(N);
+  x = vector(length = N) ;
+  x_aux = 0;
+  
+  for(i in 1:(N-1)){
+    x[i] = x_aux + x_raw[i] * Q_r[i];
+    x_aux = x_aux + x_raw[i] * Q_r[i+N];
+  }
+  x[N] = x_aux;
+  return(x);
+}
 #' get_spr 
 #' get spawner per recruit for a given F (F_tilde)
 #' @param F_tilde annual fishing mortality
@@ -283,7 +317,34 @@ invlogit_general = function(Y, lb, ub) {
   Y1 = 1 / (1 + exp(-Y))
   lb + (ub - lb)*Y1
 }
-
+#' get_df_quantiles
+#' get quanitles from a data.frame for 'y_value', grouped by group_vars using purrr and dplyr
+#' @param df a dataframe with columns in group_vars and y_value
+#' @param group_vars a vector of strings specifying the grouping variables 
+#' @param y_value a string specifying the column to calculate the quanitles for
+#' @param quants numeric vector of values between 0-1 which define the quantiles to calculate.
+#' @return a dataframe of quantiles 
+#' @importFrom purrr map_chr partial set_names map
+#' @importFrom dplyr group_by summarize_at %>% across all_of vars
+#' @export
+get_df_quantiles <- function(df, group_vars, y_value, quants = c(0.025, 0.5, 0.975)) {
+  if(!all(group_vars %in% colnames(df)))
+    stop("could not find all 'group_vars' in column names of 'df'.")
+  if(!(y_value %in% colnames(df)))
+    stop("could not find all 'y_value' in column names of 'df'.")
+  if(any(quants < 0))
+    stop("Found 'quants' < 0 this is not allowed.")
+  if(any(quants > 1))
+    stop("Found 'quants' > 1 this is not allowed.")
+  
+  p_names <- map_chr(quants, ~paste0(.x*100, "%"))
+  p_funs <- map(quants, ~partial(quantile, probs = .x, na.rm = TRUE)) %>% 
+    set_names(nm = p_names)
+  quant_df = df %>% 
+    group_by(across(all_of(group_vars))) %>% 
+    summarize_at(vars(!!!y_value), p_funs)
+  return(quant_df)
+}
 
 #' fix_pars
 #' @author C.Marsh
@@ -395,4 +456,32 @@ fix_pars <- function(par_list, pars_to_exclude, vec_elements_to_exclude = NULL, 
     }
   }
   return(mapped_pars);
+}
+#' get_df_quantiles
+#' get quanitles from a data.frame for 'y_value', grouped by group_vars using purrr and dplyr
+#' @param df a dataframe with columns in group_vars and y_value
+#' @param group_vars a vector of strings specifying the grouping variables 
+#' @param y_value a string specifying the column to calculate the quanitles for
+#' @param quants numeric vector of values between 0-1 which define the quantiles to calculate.
+#' @return a dataframe of quantiles 
+#' @importFrom purrr map_chr partial set_names
+#' @importFrom dplyr group_by summarize_at %>% 
+#' @export
+get_df_quantiles <- function(df, group_vars, y_value, quants = c(0.025, 0.5, 0.975)) {
+  if(!all(group_vars %in% colnames(df)))
+    stop("could not find all 'group_vars' in column names of 'df'.")
+  if(!(y_value %in% colnames(df)))
+    stop("could not find all 'y_value' in column names of 'df'.")
+  if(any(quants < 0))
+    stop("Found 'quants' < 0 this is not allowed.")
+  if(any(quants > 1))
+    stop("Found 'quants' > 1 this is not allowed.")
+  
+  p_names <- map_chr(quants, ~paste0(.x*100, "%"))
+  p_funs <- map(quants, ~partial(quantile, probs = .x, na.rm = TRUE)) %>% 
+    set_names(nm = p_names)
+  quant_df = df %>% 
+    group_by(across(all_of(group_vars))) %>% 
+    summarize_at(vars(!!!y_value), p_funs)
+  return(quant_df)
 }

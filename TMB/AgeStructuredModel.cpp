@@ -342,6 +342,8 @@ Type objective_function<Type>::operator() () {
   DATA_VECTOR(sel_ato95_bounds);  // length 2
   DATA_VECTOR(sel_a50_bounds);    // length 2
   
+  DATA_INTEGER(rec_devs_sum_to_zero);               // Should the recruit devs in each region sum to zero? yes = 1, no = 0. I yes then this the parameter trans_rec_dev has one less parameter
+  DATA_VECTOR(Q_r_for_sum_to_zero);                 // A vector that has length (trans_rec_dev.dim(1) + 1) * 2. Only used if rec_devs_sum_to_zero = 1. Should have been created by the R function Q_sum_to_zero_QR
   
   /*
    * Parameters to estiamte.
@@ -396,7 +398,9 @@ Type objective_function<Type>::operator() () {
   Type B0 = 0.0;
   Type Binit = 0.0;
   Type catch_sd = exp(ln_catch_sd);
-  Type F_init = exp(ln_F_init);
+  Type F_init = 0.0;
+  if(estimate_F_init == 1) 
+    F_init = exp(ln_F_init);
   vector<Type> init_age_dev = exp(ln_init_age_devs);
   Type sigma_init_age_devs = exp(ln_sigma_init_age_devs);
   //Type sigma_init_age_devs_sq = sigma_init_age_devs * sigma_init_age_devs;
@@ -421,17 +425,38 @@ Type objective_function<Type>::operator() () {
   iter = 0;
   Type recruit_nll = 0.0;
   
-  for(year_ndx = 0; year_ndx < n_years; ++year_ndx) {
-    if (ycs_estimated[year_ndx] == 1) {
-      ycs(year_ndx) = exp(ln_ycs_est(iter));
-      ++iter;
-    } else {
-      ycs(year_ndx) = 1.0;
+  
+  if(rec_devs_sum_to_zero == 1) {
+    int N = ycs_estimated.sum();
+    Type rec_aux = 0.0;
+    Type rec_multi_temp = 0.0;
+    vector<Type> transformed_ycs(N);
+    for(year_ndx = 0; year_ndx < ln_ycs_est.size(); ++year_ndx) {
+      rec_multi_temp = rec_aux + ln_ycs_est(year_ndx) * Q_r_for_sum_to_zero(year_ndx);
+      rec_aux += ln_ycs_est(year_ndx) * Q_r_for_sum_to_zero(year_ndx + N);
+      transformed_ycs(year_ndx) = exp(rec_multi_temp);
     }
+    // the last group
+    transformed_ycs(N - 1) = exp(rec_aux);
+    // now save as the last value
+    for(year_ndx = 0; year_ndx < n_years; ++year_ndx) {
+      if (ycs_estimated[year_ndx] == 1) {
+        ycs(year_ndx) = exp(transformed_ycs(iter));
+      }
+    }
+  } else {
+    for(year_ndx = 0; year_ndx < n_years; ++year_ndx) {
+      if (ycs_estimated[year_ndx] == 1) {
+        ycs(year_ndx) = exp(ln_ycs_est(iter));
+        ++iter;
+      } else {
+        ycs(year_ndx) = 1.0;
+      }
+    }
+    if (standardise_ycs == 1) {
+      ycs /= ycs.mean();
+    } 
   }
-  if (standardise_ycs == 1) {
-    ycs /= ycs.mean();
-  } 
   // Note this contains constants (non estimated ycs values), and probably needs a jacombian for the transformation.
   // mean of random variables 
   for(year_ndx = 0; year_ndx < ln_ycs_est.size(); ++year_ndx) {
@@ -873,6 +898,7 @@ Type objective_function<Type>::operator() () {
   //REPORT( annual_Fss );
   REPORT( pred_catches );
   
+  REPORT( years );
   REPORT( fishery_selectivity );
   REPORT( survey_selectivity );
   
