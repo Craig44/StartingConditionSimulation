@@ -1,5 +1,5 @@
 #'
-#' Catch 
+#' Validate the reference point functions used in this project
 #'
 source("AuxillaryFunctions.R")
 library(dplyr)
@@ -16,11 +16,11 @@ dyn.load(dynlib(file.path(DIR$tmb, "AgeStructuredModel")))
 #setwd(DIR$R)
 
 
-slow_bio = readRDS(file = file.path(DIR$data, "Slow_biology.RDS"))
+this_bio = readRDS(file = file.path(DIR$data, "Medium_biology.RDS"))
+#this_bio = readRDS(file = file.path(DIR$data, "Fast_biology.RDS"))
 
-this_bio = slow_bio
 
-n_years = 60
+n_years = 160
 years = (2020 - n_years + 1):2020
 full_years = (min(years) - 1):max(years)
 ## observation temporal frequency
@@ -78,15 +78,17 @@ TMB_data$mean_weight_b = this_bio$b
 TMB_data$estimate_F_init = 0
 TMB_data$estimate_init_age_devs = 0
 TMB_data$n_init_age_devs = 1
+TMB_data$rec_devs_sum_to_zero = 0
+TMB_data$Q_r_for_sum_to_zero = Q_sum_to_zero_QR(length(TMB_data$years))
 
 ## fishery_probs
-fishery_probs = c(rep(this_bio$M * 1.5, 20), rep(this_bio$M, 40) )
+fishery_probs = c(rep(this_bio$M * 1.5, 20), rep(this_bio$M, 40), rep(this_bio$M, 100) )
 plot(years, fishery_probs, type = "l", lty = 2, lwd = 2)
 
 ## The same parameters as OM, to check for consistency
 OM_pars = list(
   ln_R0 = log(this_bio$R0),
-  ln_ycs_est =  rnorm(sum(TMB_data$ycs_estimated),  0, this_bio$sigma_r),
+  ln_ycs_est =  rep(0, sum(TMB_data$ycs_estimated)),#rnorm(sum(TMB_data$ycs_estimated),  0, this_bio$sigma_r),
   ln_sigma_r = log( this_bio$sigma_r),
   ln_extra_survey_cv = log(0.0001),
   ln_F_init = log(0.01),
@@ -136,9 +138,20 @@ ages = TMB_data$ages
 M = TMB_data$natMor
 Ninit = OM_report$N[,1]
 
+waa_old = waa
+paa_old = paa
+ages = ages
+fishery_sel_old = fishery_sel
+
 F_30 = find_F_percent(target_spr = 30, fishery_sel, M, waa, paa, ages, prop_Z = 0.5)
+F_30_old = F_30
 F_35 = find_F_percent(target_spr = 35, fishery_sel, M, waa, paa, ages, prop_Z = 0.5)
 F_40 = find_F_percent(target_spr = 40, fishery_sel, M, waa, paa, ages, prop_Z = 0.5)
+F_20 = find_F_percent(target_spr = 20, fishery_sel, M, waa, paa, ages, prop_Z = 0.5)
+F_20_old = F_20
+F_50 = find_F_percent(target_spr = 50, fishery_sel, M, waa, paa, ages, prop_Z = 0.5)
+F_50_old = F_50
+
 F_max = find_F_max(fishery_sel, M, waa_catch, ages)
 F_0.1 = find_F_0.1(fishery_sel, M, waa_catch, ages, derivative_method = 1)
 F_0.1_alt = find_F_0.1(fishery_sel, M, waa_catch, ages, derivative_method = 2)
@@ -199,8 +212,8 @@ OM_pars$ln_F = array(log(F_30$F_ref), dim = c(TMB_data$n_fisheries,TMB_data$n_ye
 TMB_data$estimate_F_init = 0
 TMB_data$estimate_init_age_devs = 0
 TMB_data$stockRecruitmentModelCode = 0
-OM_pars$ln_R0 = log(1)
-OM_pars$ln_ycs_est = rep(0.5* exp(OM_pars$ln_sigma_r)^2, length(OM_pars$ln_ycs_est))
+OM_pars$ln_R0 = log(14)
+OM_pars$ln_ycs_est = rep(0, length(OM_pars$ln_ycs_est))
 OM_obj_30 <- MakeADFun(TMB_data, OM_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
 
 OM_30_report = OM_obj_30$report()
@@ -226,6 +239,32 @@ lines(full_years, OM_40_report$depletion * 100, lty = 2, lwd = 2, col = "blue")
 abline(h = 40, lty = 2,col = "blue")
 abline(h = 35, lty = 2,col = "red")
 abline(h = 30, lty = 2,col = "black")
+
+
+## 80 years of F_50 then 80 years of F_25
+OM_pars$ln_F = array(c(rep(log(F_50$F_ref), TMB_data$n_years /2),rep(log(F_20$F_ref), TMB_data$n_years /2)), dim = c(TMB_data$n_fisheries,TMB_data$n_years))
+OM_obj_50_20 <- MakeADFun(TMB_data, OM_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
+OM_50_20_report = OM_obj_50_20$report()
+
+plot(full_years, OM_50_20_report$depletion * 100, type = "l", xlab = "Year", ylab = "Depletion", lty = 1, lwd = 2, ylim = c(0,100))
+abline(h = 50, lty = 2,col = "blue")
+abline(h = 20, lty = 2,col = "red")
+
+## now look at depletion based reference points with 
+## stock recruit functions
+F_30_dep = find_F_depletion(target_depletion = 30, fishery_sel, M, waa, paa, ages, prop_Z = 0.5, SRmodel = 0, SR_pars = NULL)
+F_30_dep_sr = find_F_depletion(target_depletion = 30, fishery_sel, M, waa, paa, ages, prop_Z = 0.5, SRmodel = 1, SR_pars =TMB_data$steepness)
+F_30_dep$F_ref
+F_30$F_ref
+## with SR
+F_30_dep_sr$F_ref
+
+TMB_data$stockRecruitmentModelCode = 2
+TMB_data$steepness
+OM_pars$ln_F = array(log(F_30_dep_sr$F_ref), dim = c(TMB_data$n_fisheries,TMB_data$n_years))
+OM_obj_35 <- MakeADFun(TMB_data, OM_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
+OM_35_report = OM_obj_35$report()
+tail(OM_35_report$depletion)
 
 
 ## compare our methods with fishmethods

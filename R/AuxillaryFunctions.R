@@ -25,6 +25,20 @@ Q_sum_to_zero_QR <- function(N) {
   }
   return (Q_r);
 }
+#' BH
+#' @description Beverton holt stock recruit relationship parameterised with steepness
+#' @param SSB Spawning stock biomass
+#' @param B0 equilibrium SSB
+#' @param h steepness parameter as defined by Doonan and Mace 1981, represents 
+#' @return Number of recruits acording to the Beverton holt relationship
+#' @export
+#'
+BH <- function(SSB,B0,h) {
+  ssb_ratio = SSB / B0
+  part_2 = (1 - ((5*h - 1) / (4*h)) * ( 1 - ssb_ratio))
+  val = ssb_ratio / part_2
+  return(val)
+}
 
 #' sum_to_zero_QR
 #' take a vector of unconstrained values length (N - 1) and derive a vector of length N that sum = 0 using the QR method
@@ -159,18 +173,118 @@ dYPR <-function(F_tilde, fishery_sel, M, waa, ages) {
 
 find_F_percent <- function(target_spr, fishery_sel, M, waa, paa, ages, prop_Z = 0.5, F_range = c(0.00001, 1.5)) {
   nll_spr <- function(ln_F_tilde, target_spr, fishery_sel, M, waa, paa, ages, prop_Z) {
-    SPR_F0 = get_spr(0, fishery_sel, M, waa, paa, ages, prop_Z);
-    SPR_Ftilde = get_spr(exp(ln_F_tilde), fishery_sel, M, waa, paa, ages, prop_Z);
+    SPR_F0 = get_spr(0, fishery_sel = fishery_sel, M = M, waa = waa, paa = paa, ages = ages, prop_Z = prop_Z);
+    SPR_Ftilde = get_spr(exp(ln_F_tilde), fishery_sel = fishery_sel, M = M, waa = waa, paa = paa, ages = ages, prop_Z = prop_Z);
     return(((SPR_F0/100 * target_spr) - SPR_Ftilde)^2)
   }
   
   # optimes
   mle_par = optimise(interval = c(log(F_range[1]), log(F_range[2])), f = nll_spr, target_spr = target_spr, fishery_sel = fishery_sel, M = M, waa = waa, paa = paa, ages = ages, prop_Z = prop_Z)
   F_ref = exp(mle_par$minimum)
-  SPR = get_spr(F_ref, fishery_sel, M, waa, paa, ages, prop_Z);
-  SPR_F0 = get_spr(0, fishery_sel, M, waa, paa, ages, prop_Z);
+  SPR = get_spr(F_ref, fishery_sel = fishery_sel, M = M, waa = waa, paa = paa, ages = ages, prop_Z = prop_Z);
+  SPR_F0 = get_spr(0, fishery_sel = fishery_sel, M = M, waa = waa, paa = paa, ages = ages, prop_Z = prop_Z);
   
   return(list(F_ref = F_ref, target_spr = target_spr, SPR = SPR, SPR_F0 = SPR_F0, percent_SPR = SPR / SPR_F0 * 100, mle_par = mle_par))
+}
+
+#'
+#' find_F_percent_alt
+#' Find a F that achieves some percent B0
+#' @param target_spr percentage SSB/B0 (depletion) that we want to find an F for
+#' @param fishery_sel vector of fishing selectivities
+#' @param M vector of natural mortality
+#' @param waa vector of weight at age
+#' @param paa vector of proportions at age
+#' @param ages vector of ages - the last age is assumed to be a plus group
+#' @param F_range vector of two values specifying the range of F's to optimise over.
+#' @param SRmodel integer stock recruit model. 0 no SR, 1 = BH with steepness
+#' @param SR_pars stock recruit pars. if SRmodel = 1 this is steepness param
+#' @param n_years number years to calculate depletion over. If null = number of ages x 4
+#' @return F_% depletion
+find_F_depletion <- function(target_depletion, fishery_sel, M, waa, paa, ages, prop_Z = 0.5, F_range = c(0.00001, 1.5), SRmodel = 0, SR_pars = NULL, n_years = NULL) {
+  if(is.null(n_years))
+    n_years = length(ages) * 4
+  nll_depletion <- function(ln_F_tilde, target_depletion, fishery_sel, M, waa, paa, ages, prop_Z, SRmodel = 0, SR_pars = NULL, n_years = n_years) {
+    this_depletion = get_depletion(F_tilde = exp(ln_F_tilde), fishery_sel = fishery_sel, M = M, waa = waa, paa = paa, ages = ages, prop_Z = prop_Z, SRmodel = SRmodel, SR_pars = SR_pars, n_years = n_years);
+    return((this_depletion- target_depletion)^2)
+  }
+  # optimizes
+  mle_par = optimise(interval = c(log(F_range[1]), log(F_range[2])), f = nll_depletion, target_depletion = target_depletion, fishery_sel = fishery_sel, M = M, waa = waa, paa = paa, ages = ages, prop_Z = prop_Z, SRmodel = SRmodel, SR_pars = SR_pars, n_years = n_years)
+  F_ref = exp(mle_par$minimum)
+  depletion = get_depletion(F_ref, fishery_sel = fishery_sel, M = M, waa = waa, paa = paa, ages = ages, prop_Z = prop_Z, SRmodel = SRmodel, SR_pars = SR_pars, n_years = n_years);
+  return(list(F_ref = F_ref, target_depletion = target_depletion, depletion = depletion, mle_par = mle_par))
+}
+#' get_depletion 
+#' get SSB/B0%
+#' @param F_tilde annual fishing mortality
+#' @param fishery_sel vector of fishing selectivities
+#' @param M vector of natural mortality
+#' @param waa vector of weight at age
+#' @param paa vector of proportions at age
+#' @param ages vector of ages - the last age is assumed to be a plus group
+#' @param SRmodel integer stock recruit model. 0 no SR, 1 = BH with steepness
+#' @param SR_pars stock recruit pars. if SRmodel = 1 this is steepness param
+#' @param n_years number years to calculate depletion over. If null = number of ages x 4
+#' @return spawner per recruit
+get_depletion <- function(F_tilde, fishery_sel, M, waa, paa, ages, prop_Z = 0.5, SRmodel = 0, SR_pars = NULL, n_years = NULL) {
+  if(is.null(n_years))
+    n_years = length(ages) * 4
+  Za = F_tilde * fishery_sel + M
+  Na = 1;
+  initNage = get_inital_nage(Na, M = M, ages = ages)
+  B0 = sum(initNage * exp(-M * prop_Z) * waa * paa)
+  Nage = initNage
+  SSB = B0
+  ## run the model 
+  for(age_iter in 2:(n_years - 1)) {
+    this_run = run_annual_cycle(Nage, SSB = SSB, R0 = Na, B0 = B0, Za = Za, waa = waa, paa = paa, ages = ages, prop_Z = prop_Z, SRmodel = SRmodel, SR_pars = SR_pars)
+    Nage <- this_run$Nage
+    SSB <- this_run$SSB
+  }
+  return(SSB / B0 *100)
+}
+#' get_inital_nage
+#' @param R0 R0
+#' @param M vector of natural mortality
+#' @param ages vector of ages - the last age is assumed to be a plus group
+#' @return spawner per recruit
+get_inital_nage <- function(R0, M, ages) {
+  Nage = R0 * exp(-M * ages)
+  ## plus group
+  Nage[length(ages)] = R0 * exp(- ages[length(ages)] * M) / (1.0 - exp(-M)) + Nage[length(ages) - 1]
+  ## ageing
+  Nage[2:(length(ages) - 1)] =  Nage[1:(length(ages) - 2)] 
+  Nage[1] = R0
+  return(Nage)
+}
+
+#' run_annual_cycle
+#' @param Nage numbers at age at beginning of annual cycle
+#' @param SSB that is used in stock recruit this year. Only used if SRmodel == 1
+#' @param R0 R0
+#' @param B0 B0
+#' @param Za total mortality to apply F + M by age
+#' @param waa vector of weight at age
+#' @param paa vector of proportions at age
+#' @param ages vector of ages - the last age is assumed to be a plus group
+#' @param SRmodel integer stock recruit model. 0 no SR, 1 = BH with steepness
+#' @param SR_pars stock recruit pars. if SRmodel = 1 this is steepness param
+#' @return list with numbers at age post annual cycle and SSB
+run_annual_cycle <- function(Nage, SSB, R0, B0, Za, waa, paa, ages, prop_Z = 0.5, SRmodel = 0, SR_pars = NULL) {
+  ## calculate partway SSB based on starting Nage and Z interpolation
+  SSB = sum(Nage * exp(-Za * prop_Z) * waa * paa)
+  temp_plus_group = Nage[length(ages)]
+  ## apply Z
+  Nage[2:length(ages)] = Nage[1:(length(ages) - 1)] * exp(-Za[1:(length(ages) - 1)]) 
+  ## plus group
+  Nage[length(ages)] = Nage[length(ages)] + temp_plus_group * exp(-Za[length(ages)])
+  ## recruitment
+  if(SRmodel == 0) {
+    Nage[1] = R0
+  } else if(SRmodel == 1) {
+    Nage[1] = R0 * BH(SSB, B0, SR_pars[1]);
+  }
+  return(list(Nage= Nage, SSB =SSB))
 }
 
 #'
