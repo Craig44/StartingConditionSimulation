@@ -20,12 +20,13 @@ Type objective_function<Type>::operator() () {
   DATA_VECTOR(survey_obs);              // Relative index (this will be ignored if survey_comp_type = 1)
   DATA_VECTOR(survey_cv);               // CV for relative index (this will be ignored if survey_comp_type = 1)
   DATA_VECTOR_INDICATOR(survey_index_keep, survey_obs);  // For one-step predictions
+  DATA_INTEGER(max_age_ndx_for_AFs);        // max age for AF  
   
-  DATA_ARRAY(survey_AF_obs);            // numbers at age. dim: n_ages x sum(survey_year_indicator) 
+  DATA_ARRAY(survey_AF_obs);            // numbers at age. dim: max_age_ndx_for_AFs x sum(survey_year_indicator) 
   DATA_ARRAY_INDICATOR(keep_survey_comp, survey_AF_obs);
 
   DATA_IARRAY(fishery_year_indicator);  // 1 = calculate, 0 = ignore,   nyear x nfisheries
-  DATA_ARRAY(fishery_AF_obs);        // numbers at age. dim: n_ages x sum(fishery_year_indicator)
+  DATA_ARRAY(fishery_AF_obs);        // numbers at age. dim: max_age_ndx_for_AFs x sum(fishery_year_indicator)
   DATA_ARRAY_INDICATOR(keep_fishery_comp, fishery_AF_obs);
   
   DATA_IVECTOR(ycs_estimated);    // 1 = estimated, 0 = ignore
@@ -190,7 +191,6 @@ Type objective_function<Type>::operator() () {
   /*
    * Set up container storage
    */
-  
   vector<Type> ssb(n_years + 1);
   ssb.setZero();
   array<Type> annual_Fs(n_fisheries, n_years);
@@ -213,7 +213,8 @@ Type objective_function<Type>::operator() () {
   // ll densities
   vector<Type> predlogN(n_ages); 
   vector<Type> temp_partition(n_ages); 
-  vector<Type> temp_partition_obs(n_ages); 
+  vector<Type> temp_partition_trunc(max_age_ndx_for_AFs); 
+  vector<Type> temp_partition_obs_trunc(max_age_ndx_for_AFs);
   
   vector<Type> survey_partition(n_ages); 
   vector<Type> fishery_partition(n_ages); 
@@ -228,16 +229,14 @@ Type objective_function<Type>::operator() () {
   vector<Type> survey_selectivity(n_ages);
   vector<Type> survey_sd(survey_cv.size());
   
-  for(iter = 0; iter < survey_sd.size(); ++iter) {
+  for(iter = 0; iter < survey_sd.size(); ++iter) 
     survey_sd(iter) = sqrt(log(survey_cv(iter) * survey_cv(iter) + extra_survey_cv * extra_survey_cv + 1));
-  }
   // Calculate vulnerable biomass and U
   Type survey_comp_nll = 0;
   Type survey_index_nll = 0;
   Type fishery_comp_nll = 0;
   Type catch_nll = 0.0;
-  Type init_age_nll = 0.0;
-  
+
   /*
    * Build Covariance's for Observations and states currently just iid with different covariances
    */
@@ -306,7 +305,7 @@ Type objective_function<Type>::operator() () {
       }
     } 
     for(age_ndx =0; age_ndx < init_age_dev.size(); ++age_ndx)
-      init_age_dev_nll -= dnorm(init_age_dev(age_ndx), Type(0.0), sigma_init_age_devs, true);            
+      init_age_dev_nll -= dnorm(init_age_dev(age_ndx), -0.5 * sigma_init_age_devs * sigma_init_age_devs, sigma_init_age_devs, true);            
   }
   ssb(0) =  (N.col(0).vec() * exp(-init_Z * propZ_ssb(0))  * stockMeanWeight.col(0).vec() * propMat.col(0).vec()).sum();
   Binit =  (N.col(0).vec() * exp(-init_Z * propZ_ssb(0))  * stockMeanWeight.col(0).vec() * propMat.col(0).vec()).sum();
@@ -456,7 +455,14 @@ Type objective_function<Type>::operator() () {
         for (int a2 = 0; a2 < n_ages; ++a2) 
           temp_partition[a2] += survey_partition(a1) * ageing_error_matrix(a1, a2);
       }
-      survey_AF_fitted.col(iter) += temp_partition;
+      // truncate plus group
+      for(age_ndx = 0; age_ndx < n_ages; ++age_ndx) {
+        if(age_ndx < max_age_ndx_for_AFs) {
+          survey_AF_fitted(age_ndx, iter) += temp_partition(age_ndx);
+        } else {
+          survey_AF_fitted(max_age_ndx_for_AFs - 1, iter) += temp_partition(age_ndx);
+        }
+      }
       survey_yearly_numbers(iter) = sum(temp_partition);
       ++iter;
     }
@@ -476,12 +482,16 @@ Type objective_function<Type>::operator() () {
           for (int a2 = 0; a2 < n_ages; ++a2) 
             temp_partition[a2] += fishery_partition(a1) * ageing_error_matrix(a1,a2);
         }
+        // truncate plus group
         for(age_ndx = 0; age_ndx < n_ages; ++age_ndx) {
-          fishery_AF_fitted(age_ndx, iter, fishery_ndx) = temp_partition(age_ndx);
+          if(age_ndx < max_age_ndx_for_AFs) {
+            fishery_AF_fitted(age_ndx, iter, fishery_ndx) += temp_partition(age_ndx);
+          } else {
+            fishery_AF_fitted(max_age_ndx_for_AFs - 1, iter, fishery_ndx) += temp_partition(age_ndx);
+          }
         }
         fishery_yearly_numbers(iter, fishery_ndx) = sum(temp_partition);
         ++iter; 
-        
       }
     }
   }
@@ -500,12 +510,12 @@ Type objective_function<Type>::operator() () {
       }   
       survey_AF_fitted.col(iter) /= survey_yearly_numbers(iter);
       
-      // check 
+      // check values > 0
       for(int i = 0; i < survey_AF_fitted.dim[0]; ++i)
         survey_AF_fitted(i, iter) = posfun(survey_AF_fitted(i, iter), eps_for_posfun, pen_posfun);
       
       // Multinomial
-      survey_comp_nll -= dmultinom(vector<Type>(survey_AF_obs.col(iter)), vector<Type>(survey_AF_fitted.col(iter)), true);
+      survey_comp_nll -= dmultinom(survey_AF_obs.col(iter).vec(), survey_AF_fitted.col(iter).vec(), true);
       SIMULATE {
         Type N_eff = sum(survey_AF_obs.col(iter));
         //survey_AF_obs.col(iter) = rmultinom(survey_AF_fitted.col(iter).vec(), N_eff);
@@ -516,32 +526,31 @@ Type objective_function<Type>::operator() () {
     }
   }
   
-  
-  
   for(fishery_ndx = 0; fishery_ndx < n_fisheries; ++fishery_ndx) {
     iter = 0;
     for(year_ndx = 0; year_ndx < n_years; year_ndx++) {
       if (fishery_year_indicator(year_ndx, fishery_ndx) == 1) {
-        for(age_ndx = 0; age_ndx < n_ages; ++age_ndx) {
+        for(age_ndx = 0; age_ndx < max_age_ndx_for_AFs; ++age_ndx) {
           fishery_AF_fitted(age_ndx, iter, fishery_ndx) /= fishery_yearly_numbers(iter, fishery_ndx);
-          temp_partition(age_ndx) = fishery_AF_fitted(age_ndx, iter, fishery_ndx);
+          temp_partition_trunc(age_ndx) = fishery_AF_fitted(age_ndx, iter, fishery_ndx);
           // check 
-          temp_partition(age_ndx) = posfun(temp_partition(age_ndx), eps_for_posfun, pen_posfun);
-          temp_partition_obs(age_ndx) = fishery_AF_obs(age_ndx, iter, fishery_ndx);
+          temp_partition_trunc(age_ndx) = posfun(temp_partition_trunc(age_ndx), eps_for_posfun, pen_posfun);
+          temp_partition_obs_trunc(age_ndx) = fishery_AF_obs(age_ndx, iter, fishery_ndx);
         }
-        fishery_comp_nll -= dmultinom(temp_partition_obs, temp_partition, true);
+        fishery_comp_nll -= dmultinom(temp_partition_obs_trunc, temp_partition_trunc, true);
         SIMULATE {
-          Type N_eff = sum(temp_partition_obs);
+          Type N_eff = sum(temp_partition_obs_trunc);
           //temp_partition_obs = rmultinom(temp_partition, N_eff);
-          temp_partition_obs = rmultinom_alt(temp_partition, N_eff);
+          temp_partition_obs_trunc = rmultinom_alt(temp_partition_trunc, N_eff);
           
-          for(age_ndx = 0; age_ndx < n_ages; ++age_ndx) 
-            fishery_AF_obs(age_ndx, iter, fishery_ndx) = temp_partition_obs(age_ndx);
+          for(age_ndx = 0; age_ndx < max_age_ndx_for_AFs; ++age_ndx) 
+            fishery_AF_obs(age_ndx, iter, fishery_ndx) = temp_partition_obs_trunc(age_ndx);
         }
         ++iter;
       }
     }
   }
+   
   for(year_ndx = 0; year_ndx < n_years; year_ndx++) {
     for(fishery_ndx = 0; fishery_ndx < n_fisheries; ++fishery_ndx) 
       catch_nll -= dnorm(log(catches(year_ndx, fishery_ndx)), log(pred_catches(year_ndx, fishery_ndx)) - 0.5 * catch_sd * catch_sd, catch_sd, true);
@@ -551,12 +560,12 @@ Type objective_function<Type>::operator() () {
       for(fishery_ndx = 0; fishery_ndx < n_fisheries; ++fishery_ndx) 
         catches(year_ndx, fishery_ndx) = exp(rnorm(log(pred_catches(year_ndx, fishery_ndx)) - 0.5 * catch_sd * catch_sd, catch_sd));
     }
-    REPORT( survey_AF_obs );
-    REPORT( fishery_AF_obs );
-    REPORT( catches );
-    REPORT( survey_obs );
   }
-  
+  // Regularity penalty for F if F_method == 0
+  Type F_penalty = 0;
+  if(F_method == 0) {
+    F_penalty = square(ln_F).sum();
+  }
   /*
    *  Reference Points
    * 
@@ -591,7 +600,7 @@ Type objective_function<Type>::operator() () {
   Type B_msy = get_SSBe(Fmsy, equilibrium_at_age, ref_selectivity, natMor, ref_ssb_waa, ages, ref_paa, propZ_ssb_ref, ages.size() * 2, maxAgePlusGroup);
   Type F_msy_nll = (-1.0 * log((YPR_msy * B_msy)/SPR_msy));
     
-  Type joint_nll = fishery_comp_nll + survey_comp_nll + survey_index_nll + recruit_nll + catch_nll + init_age_dev_nll + pen_posfun + Fmax_nll + F40_nll + F35_nll + F30_nll + F_0_1_nll + F_msy_nll;
+  Type joint_nll = fishery_comp_nll + survey_comp_nll + survey_index_nll + recruit_nll + catch_nll + init_age_dev_nll + pen_posfun + Fmax_nll + F40_nll + F35_nll + F30_nll + F_0_1_nll + F_msy_nll + F_penalty;
   
   if (isNA(joint_nll))
     error("joint_nll = NA");
@@ -637,6 +646,11 @@ Type objective_function<Type>::operator() () {
   REPORT( survey_AF_fitted );
   REPORT( survey_index_fitted );
   REPORT( survey_index_nll );
+  REPORT( F_penalty );
+  REPORT( survey_AF_obs );
+  REPORT( fishery_AF_obs );
+  REPORT( catches );
+  REPORT( survey_obs );
   
   REPORT( catch_sd );
   REPORT( fishery_AF_fitted );

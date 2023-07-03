@@ -13,7 +13,7 @@ library(reshape2)
 # Based Life-history params for Long-lived Rock fish from Wetzel and Punt
 # what about scale parameters like R0?
 fast_bio = list(
-  ages = 1:50,
+  ages = 1:20,
   L_inf = 58,
   K = 0.133,
   t0 = 0,
@@ -37,7 +37,7 @@ fast_bio = list(
 # Based Life-history params for Long-lived Rock fish from Wetzel and Punt
 # what about scale parameters like R0?
 medium_bio = list(
-  ages = 1:50,
+  ages = 1:30,
   L_inf = 34,
   K = 0.115,
   t0 = 0,
@@ -80,7 +80,29 @@ slow_bio = list(
   R0 = 5234132
 )
 
-
+#-------------------------
+### amalgam biology
+#-------------------------
+# Based Life-history params from Bai Li et al 2021
+amalgam_bio = list(
+  ages = 1:12,
+  L_inf = 80,
+  K = 0.2,
+  t0 = -1.36,
+  M = 0.2,
+  a = 2.5e-8,
+  b = 3,
+  m_a50 = 2.25,
+  m_ato95 = 3,
+  f_a50 = 1.5,
+  s_ato95 = 2,
+  s_a50 = 2,
+  f_ato95 = 1,
+  sigma = 0.6,
+  h = 0.75,
+  sigma_r = 0.6,
+  R0 = 1000
+)
 ###
 # Save these objects
 # for later reference and R-scripts
@@ -88,6 +110,7 @@ slow_bio = list(
 saveRDS(slow_bio, file = file.path(DIR$data, "Slow_biology.RDS"))
 saveRDS(medium_bio, file = file.path(DIR$data, "Medium_biology.RDS"))
 saveRDS(fast_bio, file = file.path(DIR$data, "Fast_biology.RDS"))
+saveRDS(amalgam_bio, file = file.path(DIR$data, "Amalgam_biology.RDS"))
 
 ###
 # Plot mean length at age
@@ -95,8 +118,10 @@ saveRDS(fast_bio, file = file.path(DIR$data, "Fast_biology.RDS"))
 slow_length_at_age = data.frame(age = slow_bio$ages, length_at_age = vonbert(slow_bio$ages, slow_bio$K, L_inf = slow_bio$L_inf, t0 = slow_bio$t0), life_history = "Slow")
 medium_length_at_age = data.frame(age = medium_bio$ages, length_at_age = vonbert(medium_bio$ages, medium_bio$K, L_inf = medium_bio$L_inf, t0 = medium_bio$t0), life_history = "Medium")
 fast_length_at_age = data.frame(age = fast_bio$ages, length_at_age = vonbert(fast_bio$ages, fast_bio$K, L_inf = fast_bio$L_inf, t0 = fast_bio$t0), life_history = "Fast")
+amalgam_length_at_age = data.frame(age = amalgam_bio$ages, length_at_age = vonbert(amalgam_bio$ages, amalgam_bio$K, L_inf = amalgam_bio$L_inf, t0 = amalgam_bio$t0), life_history = "Amalgam")
+
 # combine them
-length_at_age_df = rbind(slow_length_at_age, medium_length_at_age, fast_length_at_age)
+length_at_age_df = rbind(slow_length_at_age, medium_length_at_age, fast_length_at_age, amalgam_length_at_age)
 
 # visualize them
 ggplot(length_at_age_df, aes(x = age, y = length_at_age, col = life_history, linetype = life_history)) +
@@ -116,8 +141,10 @@ ggsave(filename = file.path(DIR$fig, "length_at_age.png"), width = 7, height = 6
 slow_maturity = data.frame(age = slow_bio$ages, length = slow_length_at_age$length_at_age, maturity = logis_sel(slow_bio$ages, slow_bio$m_a50, slow_bio$m_ato95), life_history = "Slow")
 medium_maturity  = data.frame(age = medium_bio$ages, length = medium_length_at_age$length_at_age, maturity = logis_sel(medium_bio$ages, medium_bio$m_a50, medium_bio$m_ato95), life_history = "Medium")
 fast_maturity  = data.frame(age = fast_bio$ages, length = fast_length_at_age$length_at_age, maturity = logis_sel(fast_bio$ages, fast_bio$m_a50, fast_bio$m_ato95), life_history = "Fast")
+amalgam_maturity  = data.frame(age = amalgam_bio$ages, length = amalgam_length_at_age$length_at_age, maturity = logis_sel(amalgam_bio$ages, amalgam_bio$m_a50, amalgam_bio$m_ato95), life_history = "Amalgam")
+
 # combine them
-maturity_at_age_df = rbind(slow_maturity, medium_maturity, fast_maturity)
+maturity_at_age_df = rbind(slow_maturity, medium_maturity, fast_maturity, amalgam_maturity)
 
 # visualize it
 ggplot(maturity_at_age_df, aes(x = age, y = maturity, col = life_history, linetype = life_history)) +
@@ -137,6 +164,8 @@ length_midpoints = seq(from = 5, to = 70, by = 1)
 slow_maturity_alt = data.frame(length = length_midpoints, maturity = logistic_sel_alternative(length_midpoints, 38, -0.44), life_history = "Slow")
 medium_maturity_alt  = data.frame(length = length_midpoints, maturity = logistic_sel_alternative(length_midpoints, 21, -0.67), life_history = "Medium")
 fast_maturity_alt  = data.frame(length = length_midpoints, maturity = logistic_sel_alternative(length_midpoints, 33, -0.75), life_history = "Fast")
+#amalgam_maturity_alt  = data.frame(length = length_midpoints, maturity = logistic_sel_alternative(length_midpoints, 33, -0.75), life_history = "Amalgam")
+
 maturity_at_age_alt_df = rbind(slow_maturity_alt, medium_maturity_alt, fast_maturity_alt)
 maturity_at_age_alt_df$type = "Original"
 maturity_at_age_df$type = "Current"

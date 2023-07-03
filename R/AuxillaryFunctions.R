@@ -408,7 +408,7 @@ logis_sel<- function(X,a50,a95)
 #' @return selectivity along x
 #' @export
 logistic_sel_alternative = function (X, a50, slope) {
-  1/(1 + exp(slope * (X - a50)))
+  1/(1 + exp(-slope * (X - a50)))
 }
 
 #' logit_general bounds X which is between [lb,ub] to -inf -> inf based on the logit transformation
@@ -598,4 +598,163 @@ get_df_quantiles <- function(df, group_vars, y_value, quants = c(0.025, 0.5, 0.9
     group_by(across(all_of(group_vars))) %>% 
     summarize_at(vars(!!!y_value), p_funs)
   return(quant_df)
+}
+
+get_multiple_Bzeros <- function(mle_lst) {
+  mod_labs = names(mle_lst)
+  B0_df = NULL
+  for(i in 1:length(mod_labs)) {
+    tmp_B0 = data.frame(B0 = mle_lst[[mod_labs[i]]]$B0, sim_iter = mod_labs[i])
+    B0_df = rbind(B0_df, tmp_B0)
+  }
+  return(B0_df)
+}
+
+
+get_multiple_scalar_vals <- function(mle_lst, component = "B0") {
+  mod_labs = names(mle_lst)
+  if(!component %in% names(mle_lst[[1]]))
+    stop(paste0("Could not find ", component, " in mle_lst. Check spelling of 'component' parameter"))
+  full_df = NULL
+  for(i in 1:length(mod_labs)) {
+    val = get(component, mle_lst[[mod_labs[i]]])
+    tmp_df = data.frame(value = val, sim_iter = mod_labs[i])
+    full_df = rbind(full_df, tmp_df)
+  }
+  return(full_df)
+}
+
+get_multi_ssb <- function(mle_lst) {
+  mod_labs = names(mle_lst)
+  full_df = NULL
+  for(i in 1:length(mod_labs)) {
+    val = get("ssb", mle_lst[[mod_labs[i]]])
+    tmp_df = data.frame(SSB = val, years = c(min(mle_lst[[i]]$years) - 1, mle_lst[[i]]$years), sim_iter = mod_labs[i], depletion = val / mle_lst[[i]]$B0 * 100)
+    full_df = rbind(full_df, tmp_df)
+  }
+  return(full_df)
+}
+get_multiple_vector_vals <- function(mle_lst, component = "B0", element = "last") {
+  mod_labs = names(mle_lst)
+  if(!component %in% names(mle_lst[[1]]))
+    stop(paste0("Could not find ", component, " in mle_lst. Check spelling of 'component' parameter"))
+  full_df = NULL
+  for(i in 1:length(mod_labs)) {
+    vec = get(component, mle_lst[[mod_labs[i]]])
+    val = NA
+    if(element == "first")
+      val = vec[1]
+    if(element == "last")
+      val = vec[length(vec)]
+    tmp_df = data.frame(value = val, sim_iter = mod_labs[i], label = mod_labs[i])
+    full_df = rbind(full_df, tmp_df)
+  }
+  return(full_df)
+}
+get_multiple_vectors <- function(mle_lst, component = "catch", element_labs = NULL) {
+  mod_labs = names(mle_lst)
+  if(!component %in% names(mle_lst[[1]]))
+    stop(paste0("Could not find ", component, " in mle_lst. Check spelling of 'component' parameter"))
+  full_df = NULL
+  for(i in 1:length(mod_labs)) {
+    vec = get(component, mle_lst[[mod_labs[i]]])
+    if(is.null(element_labs)) {
+      tmp_df = data.frame(values = vec, sim_iter = mod_labs[i])
+    } else {
+      tmp_df = data.frame(values = vec, sim_iter = mod_labs[i], names = element_labs)
+    }
+    full_df = rbind(full_df, tmp_df)
+  }
+  return(full_df)
+}
+
+get_multiple_mean_age <- function(mle_lst, element_labs = NULL, survey = T) {
+  mod_labs = names(mle_lst)
+  full_df = NULL
+  for(i in 1:length(mod_labs)) {
+    if(survey) {
+      obs = get("survey_AF_obs", mle_lst[[mod_labs[i]]])
+      fit = get("survey_AF_fitted", mle_lst[[mod_labs[i]]])
+      if(!is.null(element_labs)) {
+        colnames(obs) = colnames(fit) = element_labs
+      } else {
+        colnames(obs) = colnames(fit) = paste0("year ", 1:ncol(obs))
+      }
+      molten_obs = reshape2::melt(obs, varnames = c("Age", "year"), value.name = "obs")
+      molten_fit = reshape2::melt(fit, varnames = c("Age", "year"), value.name = "fit")
+      molten_obs$fit = molten_fit$fit
+      molten_obs$fishery = 1 # dummy variable not used
+    } else {
+      obs = get("fishery_AF_obs", mle_lst[[mod_labs[i]]])
+      fit = get("fishery_AF_fitted", mle_lst[[mod_labs[i]]])
+      if(!is.null(element_labs)) {
+        colnames(obs) = colnames(fit) = element_labs
+      } else {
+        colnames(obs) = colnames(fit) = paste0("year ", 1:ncol(obs))
+      }
+      molten_obs = reshape2::melt(obs, varnames = c("Age", "year","fishery"), value.name = "obs")
+      molten_fit = reshape2::melt(fit, varnames = c("Age", "year","fishery"), value.name = "fit")
+      molten_obs$fit = molten_fit$fit
+    }
+    molten_obs$sim_iter = mod_labs[i]
+    ## calculate mean age fit and mean age obs
+    molten_obs = molten_obs %>% group_by(year, sim_iter, fishery) %>% mutate(N_eff = sum(obs), Observed_prop = obs / N_eff, Predicted_prop = fit / sum(fit)) %>% ungroup()
+    molten_obs= molten_obs %>% group_by(year, sim_iter, fishery) %>% summarise(Ey = sum(Age * Predicted_prop), Oy = sum(Age * Observed_prop), E_squared_y = sum(Age^2 * Predicted_prop), N_eff = mean(N_eff))
+    full_df = rbind(full_df, molten_obs)
+  }
+  return(full_df)
+}
+
+get_numbers_at_age <- function(mle_lst,  year_ndx = 1, year_label) {
+  mod_labs = names(mle_lst)
+  full_df = NULL
+  for(i in 1:length(mod_labs)) {
+    nage = get("N", mle_lst[[mod_labs[i]]])
+    these_years = nage[,year_ndx]
+    if(length(year_ndx) == 1)
+      these_years = matrix(these_years, nrow = 1)
+    colnames(these_years) = year_label
+    molten_nage = reshape2::melt(these_years, varnames = c("Age", "year"), value.name = "nage")
+    molten_nage$sim_iter = mod_labs[i]
+    full_df = rbind(full_df, molten_nage)
+  }
+  return(full_df)
+}
+get_age_fit_by_year <- function(mle_lst, element_labs, survey = T, years = 1960) {
+  mod_labs = names(mle_lst)
+  full_df = NULL
+  for(i in 1:length(mod_labs)) {
+    if(survey) {
+      obs = get("survey_AF_obs", mle_lst[[mod_labs[i]]])
+      fit = get("survey_AF_fitted", mle_lst[[mod_labs[i]]])
+      if(!is.null(element_labs)) {
+        colnames(obs) = colnames(fit) = element_labs
+      } else {
+        colnames(obs) = colnames(fit) = paste0("year ", 1:ncol(obs))
+      }
+      molten_obs = reshape2::melt(obs, varnames = c("Age", "year"), value.name = "obs")
+      molten_fit = reshape2::melt(fit, varnames = c("Age", "year"), value.name = "fit")
+      molten_obs$fit = molten_fit$fit
+      molten_obs$fishery = 1 # dummy variable not used
+    } else {
+      obs = get("fishery_AF_obs", mle_lst[[mod_labs[i]]])
+      fit = get("fishery_AF_fitted", mle_lst[[mod_labs[i]]])
+      if(!is.null(element_labs)) {
+        colnames(obs) = colnames(fit) = element_labs
+      } else {
+        colnames(obs) = colnames(fit) = paste0("year ", 1:ncol(obs))
+      }
+      molten_obs = reshape2::melt(obs, varnames = c("Age", "year","fishery"), value.name = "obs")
+      molten_fit = reshape2::melt(fit, varnames = c("Age", "year","fishery"), value.name = "fit")
+      molten_obs$fit = molten_fit$fit
+    }
+    molten_obs$sim_iter = mod_labs[i]
+    molten_obs = molten_obs %>% group_by(year, sim_iter, fishery) %>% mutate(N_eff = sum(obs))
+    molten_obs$resid = molten_obs$obs - molten_obs$fit
+    molten_obs$pearson_resid = molten_obs$resid / sqrt((molten_obs$fit * (1 - molten_obs$fit))/molten_obs$N_eff)
+    ## calculate mean age fit and mean age obs
+    molten_obs = molten_obs %>% dplyr::filter(year %in% years)
+    full_df = rbind(full_df, molten_obs)
+  }
+  return(full_df)
 }

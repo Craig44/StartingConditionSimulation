@@ -1,7 +1,9 @@
 #'
-#' MediumBiologyScenario
+#'
+#' Biology based on amalgam from Li et al. 2021 assessment package comparison
 #'
 #'
+
 
 source("AuxillaryFunctions.R")
 library(dplyr)
@@ -19,7 +21,7 @@ compile(file = file.path(DIR$tmb, "AgeStructuredModel.cpp"), flags = "-Wignored-
 dyn.load(dynlib(file.path(DIR$tmb, "AgeStructuredModel")))
 #setwd(DIR$R)
 
-n_last_ycs_to_estimate = 5;
+n_last_ycs_to_estimate = 2;
 n_first_ycs_to_estimate = 1; ## you may want to shift this depending on when data starts recruits are observed
 n_first_ycs_to_estimate_for_historic_models = 3; ## assume the first 10 year YCS are fixed at YCS
 
@@ -28,11 +30,11 @@ n_first_ycs_to_estimate_for_historic_models = 3; ## assume the first 10 year YCS
 initial_level = 100
 rebuild_level = 50
 #fig_dir = file.path(DIR$fig, paste0("MediumBiology_", initial_level, "_", rebuild_level))
-fig_dir = file.path(DIR$fig, "MediumBiology")
+fig_dir = file.path(DIR$fig, "AmalgamBiology")
 if(!dir.exists(fig_dir))
   dir.create(fig_dir)
 
-this_bio = readRDS(file = file.path(DIR$data, "Medium_biology.RDS"))
+this_bio = readRDS(file = file.path(DIR$data, "Amalgam_biology.RDS"))
 
 ## data period 
 n_years_historic = 20
@@ -46,7 +48,7 @@ survey_ages = this_bio$ages
 fishery_year_obs = years[(n_years_historic + 1):length(years)]
 fishery_ages = this_bio$ages
 
-OM_label = "Medium_OM3"
+OM_label = "Amalgam_OM1"
 output_data = file.path(DIR$data, OM_label)
 if(!dir.exists(output_data))
   dir.create(output_data)
@@ -71,11 +73,10 @@ diag(TMB_data$ageing_error_matrix) = 1;
 TMB_data$survey_year_indicator = as.integer(TMB_data$years %in% survey_year_obs)
 TMB_data$survey_obs = rep(0, sum(TMB_data$survey_year_indicator))
 TMB_data$survey_cv = rep(0.15, sum(TMB_data$survey_year_indicator))
-TMB_data$max_age_ndx_for_AFs = 30
-TMB_data$survey_AF_obs = matrix(5, nrow = TMB_data$max_age_ndx_for_AFs, ncol = sum(TMB_data$survey_year_indicator))
+TMB_data$survey_AF_obs = matrix(10, nrow = TMB_data$n_ages, ncol = sum(TMB_data$survey_year_indicator))
 
 TMB_data$fishery_year_indicator = array(as.integer(TMB_data$years %in% fishery_year_obs), dim = c(TMB_data$n_years, TMB_data$n_fisheries))
-TMB_data$fishery_AF_obs = array(5, dim = c(TMB_data$max_age_ndx_for_AFs, length(fishery_year_obs), TMB_data$n_fisheries))
+TMB_data$fishery_AF_obs = array(10, dim = c(TMB_data$n_ages, length(fishery_year_obs), TMB_data$n_fisheries))
 
 TMB_data$catches = array(1000, dim = c(TMB_data$n_years, TMB_data$n_fisheries))# this will be overriden in the simulate() call
 TMB_data$F_method = 0
@@ -99,13 +100,13 @@ TMB_data$mean_weight_a = this_bio$a
 TMB_data$mean_weight_b = this_bio$b
 TMB_data$estimate_F_init = 0
 TMB_data$estimate_init_age_devs = 0
-TMB_data$n_init_age_devs = max(TMB_data$ages)
+TMB_data$n_init_age_devs = 25
 
 TMB_data$rec_devs_sum_to_zero = 0
 TMB_data$Q_r_for_sum_to_zero = Q_sum_to_zero_QR(length(TMB_data$years))
 ## iniital fishery_probs
 
-fishery_probs = c(seq(from = 0.01, to = this_bio$M * 1.5, length = n_years_historic), rep(this_bio$M, n_years_data) )
+fishery_probs = c(seq(from = 0.01, to = this_bio$M * 1.5, length = n_years_historic), rep(this_bio$M, n_years_data))
 plot(years, fishery_probs, type = "l", lty = 2, lwd = 2)
 
 ## The same parameters as OM, to check for consistency
@@ -198,8 +199,8 @@ EM_short_data$survey_year_indicator = as.integer(short_survey_year_ndx)
 EM_short_data$fishery_year_indicator = array(as.integer(short_fishery_year_ndx), dim = c(EM_short_data$n_years, EM_short_data$n_fisheries))
 EM_short_data$survey_obs = rep(1, sum(short_survey_year_ndx))
 EM_short_data$survey_cv = rep(0.15, sum(short_survey_year_ndx))
-EM_short_data$survey_AF_obs = array(5, dim = c(TMB_data$max_age_ndx_for_AFs, sum(short_survey_year_ndx)))
-EM_short_data$fishery_AF_obs = array(5, dim = c(TMB_data$max_age_ndx_for_AFs, sum(short_fishery_year_ndx), EM_short_data$n_fisheries))
+EM_short_data$survey_AF_obs = array(10, dim = c(EM_short_data$n_ages, sum(short_survey_year_ndx)))
+EM_short_data$fishery_AF_obs = array(10, dim = c(EM_short_data$n_ages, sum(short_fishery_year_ndx), EM_short_data$n_fisheries))
 EM_short_data$catches = array(EM_short_data$catches[EM_short_data$n_years,], dim = c(EM_short_data$n_years, EM_short_data$n_fisheries))
 EM_short_data$ycs_estimated = rep(0, EM_short_data$n_years)
 EM_short_data$ycs_estimated[n_first_ycs_to_estimate:(length(EM_short_data$ycs_estimated) - n_last_ycs_to_estimate )] = 1
@@ -228,8 +229,8 @@ EM_short_data_00$survey_year_indicator = as.integer(survey_year_ndx_00)
 EM_short_data_00$fishery_year_indicator = array(as.integer(fishery_year_ndx_00), dim = c(EM_short_data_00$n_years, EM_short_data_00$n_fisheries))
 EM_short_data_00$survey_obs = rep(1, sum(EM_short_data_00$survey_year_indicator))
 EM_short_data_00$survey_cv = rep(0.15, sum(EM_short_data_00$survey_year_indicator))
-EM_short_data_00$survey_AF_obs = array(5, dim = c(TMB_data$max_age_ndx_for_AFs, sum(EM_short_data_00$survey_year_indicator)))
-EM_short_data_00$fishery_AF_obs = array(5, dim = c(TMB_data$max_age_ndx_for_AFs, sum(fishery_year_ndx_00), EM_short_data_00$n_fisheries))
+EM_short_data_00$survey_AF_obs = array(10, dim = c(EM_short_data_00$n_ages, sum(EM_short_data_00$survey_year_indicator)))
+EM_short_data_00$fishery_AF_obs = array(10, dim = c(EM_short_data_00$n_ages, sum(fishery_year_ndx_00), EM_short_data_00$n_fisheries))
 EM_short_data_00$catches = array(EM_short_data_00$catches[EM_short_data_00$n_years,], dim = c(EM_short_data_00$n_years, EM_short_data_00$n_fisheries))
 EM_short_data_00$ycs_estimated = rep(0, EM_short_data_00$n_years)
 EM_short_data_00$ycs_estimated[n_first_ycs_to_estimate:(length(EM_short_data_00$ycs_estimated) - n_last_ycs_to_estimate )] = 1
@@ -256,8 +257,8 @@ EM_hist_data_00$survey_year_indicator = as.integer(survey_year_ndx_hist_00)
 EM_hist_data_00$fishery_year_indicator = array(as.integer(fishery_year_ndx_hist_00), dim = c(EM_hist_data_00$n_years, EM_hist_data_00$n_fisheries))
 EM_hist_data_00$survey_obs = rep(1, sum(EM_hist_data_00$survey_year_indicator))
 EM_hist_data_00$survey_cv = rep(0.15, sum(EM_hist_data_00$survey_year_indicator))
-EM_hist_data_00$survey_AF_obs = array(5, dim = c(TMB_data$max_age_ndx_for_AFs, sum(EM_hist_data_00$survey_year_indicator)))
-EM_hist_data_00$fishery_AF_obs = array(5, dim = c(TMB_data$max_age_ndx_for_AFs, sum(fishery_year_ndx_hist_00), EM_hist_data_00$n_fisheries))
+EM_hist_data_00$survey_AF_obs = array(10, dim = c(EM_hist_data_00$n_ages, sum(EM_hist_data_00$survey_year_indicator)))
+EM_hist_data_00$fishery_AF_obs = array(10, dim = c(EM_hist_data_00$n_ages, sum(fishery_year_ndx_hist_00), EM_hist_data_00$n_fisheries))
 EM_hist_data_00$catches = array(EM_hist_data_00$catches[EM_hist_data_00$n_years,], dim = c(EM_hist_data_00$n_years, EM_hist_data_00$n_fisheries))
 EM_hist_data_00$ycs_estimated = rep(0, EM_hist_data_00$n_years)
 EM_hist_data_00$ycs_estimated[n_first_ycs_to_estimate:(length(EM_hist_data_00$ycs_estimated) - n_last_ycs_to_estimate )] = 1
@@ -292,10 +293,10 @@ OM_short$fn()
 ## --> Initial
 ## ----> rebuild 
 ## ------> Simulations
-n_sims = 50
+n_sims = 100
 SSB_df = recruit_df = depletion_df = NULL
-inital_levels = c(25, 100)# c(25, 50, 75, 100)
-rebuild_levels = c(20, 50) # c(20, 35, 50)
+inital_levels = c(25, 50, 75, 100)
+rebuild_levels = c(20, 35, 50)
 EM1a_data = EM1b_data = EM1_data
 EM2_data = EM3_data = EM_short_data
 EM2_data_00 = EM3_data_00 = EM_short_data_00
@@ -423,7 +424,7 @@ for(init_ndx in 1:length(inital_levels)) {
       EM1_00_obj <- MakeADFun(EM1_data_00, EM_hist_00_pars, map = na_EM1_pars_00, DLL= "AgeStructuredModel", checkParameterOrder = T, silent = T)
       EM1a_00_obj <- MakeADFun(EM1a_data_00, EM_hist_00_pars, map = na_EM1a_pars_00, DLL= "AgeStructuredModel", checkParameterOrder = T, silent = T)
       EM1b_00_obj <- MakeADFun(EM1b_data_00, EM_hist_00_pars, map = na_EM1b_pars_00, DLL= "AgeStructuredModel", checkParameterOrder = T, silent = T)
-
+      
       ## Estimate
       mle_EM1 = nlminb(start = EM1_obj$par, objective = EM1_obj$fn, gradient  = EM1_obj$gr, control = list(iter.max = 10000, eval.max = 10000))
       try_improve = tryCatch(expr =
@@ -444,7 +445,7 @@ for(init_ndx in 1:length(inital_levels)) {
         EM1_rep = EM1_obj$report(mle_EM1$par)
         mle_lst_EM1[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]][[as.character(sim_iter)]] = EM1_rep
       }
-
+      
       ## EM1a
       mle_EM1a = nlminb(start = EM1a_obj$par, objective = EM1a_obj$fn, gradient  = EM1a_obj$gr, control = list(iter.max = 10000, eval.max = 10000))
       try_improve = tryCatch(expr =
@@ -485,7 +486,7 @@ for(init_ndx in 1:length(inital_levels)) {
         EM1b_rep = EM1b_obj$report(mle_EM1b$par)
         mle_lst_EM1b[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]][[as.character(sim_iter)]] = EM1b_rep
       }
-     
+      
       ## EM2
       mle_EM2 = nlminb(start = EM2_obj$par, objective = EM2_obj$fn, gradient  = EM2_obj$gr, control = list(iter.max = 10000, eval.max = 10000))
       try_improve = tryCatch(expr =
@@ -507,7 +508,7 @@ for(init_ndx in 1:length(inital_levels)) {
         mle_lst_EM2[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]][[as.character(sim_iter)]] = EM2_rep
       }
       
-
+      
       ## EM3
       mle_EM3 = nlminb(start = EM3_obj$par, objective = EM3_obj$fn, gradient  = EM3_obj$gr, control = list(iter.max = 10000, eval.max = 10000))
       try_improve = tryCatch(expr =
@@ -669,4 +670,3 @@ saveRDS(object = mle_lst_EM3_00, file = file.path(output_data, "mle_lst_EM3_00.R
 #saveRDS(object = OM_obj, file = file.path(output_data, "OM_obj.RDS"))
 saveRDS(object = OM_sim_lst, file = file.path(output_data, "OM_sim_lst.RDS"))
 saveRDS(object = OM_rep_lst, file = file.path(output_data, "OM_rep_lst.RDS"))
-
