@@ -30,6 +30,10 @@ Type objective_function<Type>::operator() () {
   DATA_ARRAY_INDICATOR(keep_fishery_comp, fishery_AF_obs);
   
   DATA_IVECTOR(ycs_estimated);    // 1 = estimated, 0 = ignore
+  DATA_IVECTOR(ycs_bias_correction);// 1 = apply -0.5 sigma^2 bias correction in ycs prior, 0 = don't apply
+  // you want to turn this off when data information is low. otherwise recruit devs will be centred on -0.5 sigma^2
+  // when we want them to be centred on zero. lenght n_years
+  
   DATA_INTEGER(standardise_ycs);  // 0 = No, 1 = YCS divide by mean (Haist standardisation), 2 = 
   DATA_INTEGER(F_method);         // 0 = estimate F's as free parameters, 1 = Hybrid method
   DATA_SCALAR(F_max);                 // max F = 2.56
@@ -68,7 +72,6 @@ Type objective_function<Type>::operator() () {
   PARAMETER(ln_R0); 
   PARAMETER_VECTOR(ln_ycs_est);           // length(recruit_devs) = sum(ycs_estimated)
   PARAMETER(ln_sigma_r);                    // logistic fishery ogive
-  PARAMETER( ln_extra_survey_cv );          // Additional survey cv.
 
   PARAMETER(ln_F_init); 
   PARAMETER_VECTOR(ln_init_age_devs);       // length(recruit_devs) = sum(ycs_estimated)
@@ -109,7 +112,6 @@ Type objective_function<Type>::operator() () {
   Type Fmsy = exp(ln_Fmsy);
   Type F_0_1 = exp(ln_F_0_1);
 
-  Type extra_survey_cv = exp(ln_extra_survey_cv);
   Type R0 = exp(ln_R0);
   Type sigma_r = exp(ln_sigma_r);
   Type B0 = 0.0;
@@ -138,7 +140,7 @@ Type objective_function<Type>::operator() () {
   }
   
   // deal with YCS
-  vector<Type> ycs(n_years);
+  vector<Type> ycs(n_years); 
   iter = 0;
   Type recruit_nll = 0.0;
   
@@ -156,15 +158,32 @@ Type objective_function<Type>::operator() () {
     // the last group
     transformed_ycs(N - 1) = exp(rec_aux);
     // now save as the last value
+    iter = 0;
     for(year_ndx = 0; year_ndx < n_years; ++year_ndx) {
       if (ycs_estimated[year_ndx] == 1) {
         ycs(year_ndx) = exp(transformed_ycs(iter));
+        // apply prior
+        if(ycs_bias_correction(year_ndx) == 1) {
+          recruit_nll -= dnorm(transformed_ycs(iter), -0.5 * sigma_r * sigma_r , sigma_r, true);
+        } else {
+          recruit_nll -= dnorm(transformed_ycs(iter), Type(0.0), sigma_r, true);
+        }
+        ++iter;
+      } else {
+        ycs(year_ndx) = 1.0;
       }
     }
   } else {
+    iter = 0;
     for(year_ndx = 0; year_ndx < n_years; ++year_ndx) {
       if (ycs_estimated[year_ndx] == 1) {
         ycs(year_ndx) = exp(ln_ycs_est(iter));
+        // apply prior
+        if(ycs_bias_correction(year_ndx) == 1) {
+          recruit_nll -= dnorm(ln_ycs_est(iter), -0.5 * sigma_r * sigma_r , sigma_r, true);
+        } else {
+          recruit_nll -= dnorm(ln_ycs_est(iter), Type(0.0), sigma_r, true);
+        }
         ++iter;
       } else {
         ycs(year_ndx) = 1.0;
@@ -174,14 +193,7 @@ Type objective_function<Type>::operator() () {
       ycs /= ycs.mean();
     } 
   }
-  // Note this contains constants (non estimated ycs values), and probably needs a jacombian for the transformation.
-  // mean of random variables 
-  for(year_ndx = 0; year_ndx < ln_ycs_est.size(); ++year_ndx) {
-    //recruit_nll -= dnorm(lln_ycs_est(year_ndx), -0.5 * sigma_r * sigma_r, sigma_r, true) - ln_ycs_est(year_ndx);  // if random effect, will need this if Log-Normal distribution used
-    recruit_nll -= dnorm(ln_ycs_est(year_ndx), -0.5 * sigma_r * sigma_r , sigma_r, true);                          // if random effect, will need this if Log-Normal distribution used
-    //recruit_nll -= dnorm(ln_ycs_est(year_ndx), Type(0.0), sigma_r, true);                          // if random effect, will need this if Log-Normal distribution used
-  }
-  
+
   Type survey_a50 = invlogit_general(logit_survey_a50, sel_a50_bounds(0), sel_a50_bounds(1));
   Type survey_ato95 = invlogit_general(logit_survey_ato95, sel_ato95_bounds(0), sel_ato95_bounds(1));
   vector<Type> f_a50 = invlogit_general(logit_f_a50, sel_a50_bounds(0), sel_a50_bounds(1));
@@ -230,7 +242,7 @@ Type objective_function<Type>::operator() () {
   vector<Type> survey_sd(survey_cv.size());
   
   for(iter = 0; iter < survey_sd.size(); ++iter) 
-    survey_sd(iter) = sqrt(log(survey_cv(iter) * survey_cv(iter) + extra_survey_cv * extra_survey_cv + 1));
+    survey_sd(iter) = sqrt(log(survey_cv(iter) * survey_cv(iter) + 1));
   // Calculate vulnerable biomass and U
   Type survey_comp_nll = 0;
   Type survey_index_nll = 0;
@@ -304,8 +316,8 @@ Type objective_function<Type>::operator() () {
         N(age_ndx, 0) *= init_age_dev(age_ndx - 1);
       }
     } 
-    for(age_ndx =0; age_ndx < init_age_dev.size(); ++age_ndx)
-      init_age_dev_nll -= dnorm(init_age_dev(age_ndx), -0.5 * sigma_init_age_devs * sigma_init_age_devs, sigma_init_age_devs, true);            
+    for(age_ndx =0; age_ndx < ln_init_age_devs.size(); ++age_ndx)
+      init_age_dev_nll -= dnorm(ln_init_age_devs(age_ndx), -0.5 * sigma_init_age_devs * sigma_init_age_devs, sigma_init_age_devs, true);            
   }
   ssb(0) =  (N.col(0).vec() * exp(-init_Z * propZ_ssb(0))  * stockMeanWeight.col(0).vec() * propMat.col(0).vec()).sum();
   Binit =  (N.col(0).vec() * exp(-init_Z * propZ_ssb(0))  * stockMeanWeight.col(0).vec() * propMat.col(0).vec()).sum();
@@ -520,7 +532,6 @@ Type objective_function<Type>::operator() () {
         Type N_eff = sum(survey_AF_obs.col(iter));
         //survey_AF_obs.col(iter) = rmultinom(survey_AF_fitted.col(iter).vec(), N_eff);
         survey_AF_obs.col(iter) = rmultinom_alt(survey_AF_fitted.col(iter).vec(), N_eff);
-        
       }
       ++iter;
     }
@@ -563,9 +574,11 @@ Type objective_function<Type>::operator() () {
   }
   // Regularity penalty for F if F_method == 0
   Type F_penalty = 0;
+  /*
   if(F_method == 0) {
     F_penalty = square(ln_F).sum();
   }
+   */
   /*
    *  Reference Points
    * 
@@ -641,7 +654,6 @@ Type objective_function<Type>::operator() () {
   REPORT( f_a50 );
   REPORT( f_ato95 );
   REPORT( annual_Fs );
-  REPORT( extra_survey_cv );
   REPORT( survey_sd );
   REPORT( survey_AF_fitted );
   REPORT( survey_index_fitted );
