@@ -19,9 +19,14 @@ compile(file = file.path(DIR$tmb, "AgeStructuredModel.cpp"), flags = "-Wignored-
 dyn.load(dynlib(file.path(DIR$tmb, "AgeStructuredModel")))
 #setwd(DIR$R)
 
-n_last_ycs_to_estimate = 5;
+OM_label = "Medium_OM3"
+output_data = file.path(DIR$data, OM_label)
+if(!dir.exists(output_data))
+  dir.create(output_data)
+
+n_last_ycs_to_estimate = 1;
 n_first_ycs_to_estimate = 1; ## you may want to shift this depending on when data starts recruits are observed
-n_first_ycs_to_estimate_for_historic_models = 3; ## assume the first 10 year YCS are fixed at YCS
+n_first_ycs_to_estimate_for_historic_models = 1; ## assume the first 10 year YCS are fixed at YCS
 
 ## to help stabilize the EM's
 
@@ -46,10 +51,7 @@ survey_ages = this_bio$ages
 fishery_year_obs = years[(n_years_historic + 1):length(years)]
 fishery_ages = this_bio$ages
 
-OM_label = "Medium_OM3"
-output_data = file.path(DIR$data, OM_label)
-if(!dir.exists(output_data))
-  dir.create(output_data)
+
 
 ############
 ## Build a multinomial model to double check estimability of all parameters
@@ -85,6 +87,9 @@ TMB_data$F_max = 3
 TMB_data$catch_indicator = array(1, dim = c(TMB_data$n_years, TMB_data$n_fisheries))
 TMB_data$ycs_estimated = c(rep(1, n_years))
 TMB_data$standardise_ycs = 0;
+TMB_data$ycs_bias_correction = rep(1, n_years)
+## don't apply bias correction to the last 4 years because of lack of data
+TMB_data$ycs_bias_correction[(n_years - 3):n_years] = 0
 
 TMB_data$catchMeanLength = TMB_data$stockMeanLength = matrix(vonbert(this_bio$ages, this_bio$K, L_inf = this_bio$L_inf, t0 = this_bio$t0), byrow = F, ncol = TMB_data$n_years, nrow = TMB_data$n_ages)
 TMB_data$propMat = matrix(logis_sel(this_bio$ages, this_bio$m_a50, this_bio$m_ato95), byrow = F, ncol = TMB_data$n_years, nrow = TMB_data$n_ages)
@@ -113,7 +118,7 @@ OM_pars = list(
   ln_R0 = log(this_bio$R0),
   ln_ycs_est =  rnorm(sum(TMB_data$ycs_estimated),  -0.5 * this_bio$sigma_r * this_bio$sigma_r, this_bio$sigma_r),
   ln_sigma_r = log( this_bio$sigma_r),
-  ln_extra_survey_cv = log(0.0001),
+  #ln_extra_survey_cv = log(0.0001),
   ln_F_init = log(0.01),
   ln_init_age_devs = rep(0, TMB_data$n_init_age_devs),
   ln_sigma_init_age_devs = log(0.6),
@@ -134,7 +139,7 @@ OM_pars = list(
 )
 
 # these parameters we are not estimating.
-na_map = fix_pars(par_list = OM_pars, pars_to_exclude = c("ln_catch_sd", "ln_extra_survey_cv","ln_sigma_r", "ln_F_init", "ln_init_age_devs", "ln_sigma_init_age_devs"))
+na_map = fix_pars(par_list = OM_pars, pars_to_exclude = c("ln_catch_sd", "ln_sigma_r", "ln_F_init", "ln_init_age_devs", "ln_sigma_init_age_devs"))
 OM_obj <- MakeADFun(TMB_data, OM_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
 
 OM_report = OM_obj$report()
@@ -190,6 +195,8 @@ EM_short_data = TMB_data
 EM_short_data$F_method = 1
 EM_short_data$years = data_years
 EM_short_data$n_years = length(data_years)
+EM_short_data$ycs_bias_correction = rep(1, EM_short_data$n_years)
+EM_short_data$ycs_bias_correction[(EM_short_data$n_years - 3):EM_short_data$n_years] = 0
 short_survey_year_ndx = data_years %in% survey_year_obs 
 short_survey_year_obs = data_years[short_survey_year_ndx]
 short_fishery_year_ndx = data_years %in% fishery_year_obs
@@ -220,6 +227,8 @@ EM_short_data_00 = TMB_data
 EM_short_data_00$F_method = 1
 EM_short_data_00$years = data_years_00
 EM_short_data_00$n_years = length(data_years_00)
+EM_short_data_00$ycs_bias_correction = rep(1, EM_short_data_00$n_years)
+EM_short_data_00$ycs_bias_correction[(EM_short_data_00$n_years - 3):EM_short_data_00$n_years] = 0
 survey_year_ndx_00 = data_years_00 %in% survey_year_obs
 survey_year_obs_00 = data_years_00[survey_year_ndx_00]
 fishery_year_ndx_00 = data_years_00 %in% fishery_year_obs 
@@ -248,6 +257,8 @@ EM_hist_data_00 = TMB_data
 EM_hist_data_00$F_method = 1
 EM_hist_data_00$years = data_hist_years_00
 EM_hist_data_00$n_years = length(data_hist_years_00)
+EM_hist_data_00$ycs_bias_correction = rep(1, EM_hist_data_00$n_years)
+EM_hist_data_00$ycs_bias_correction[(EM_hist_data_00$n_years - 3):EM_hist_data_00$n_years] = 0
 survey_year_ndx_hist_00 = data_hist_years_00 %in% survey_year_obs
 survey_year_obs_hist_00 = data_hist_years_00[survey_year_ndx_hist_00]
 fishery_year_ndx_hist_00 = data_hist_years_00 %in%  fishery_year_obs 
@@ -292,7 +303,7 @@ OM_short$fn()
 ## --> Initial
 ## ----> rebuild 
 ## ------> Simulations
-n_sims = 50
+n_sims = 100
 SSB_df = recruit_df = depletion_df = NULL
 inital_levels = c(25, 100)# c(25, 50, 75, 100)
 rebuild_levels = c(20, 50) # c(20, 35, 50)
@@ -308,16 +319,16 @@ EM2_data$estimate_F_init = EM2_data_00$estimate_F_init = EM3_data$estimate_F_ini
 EM2_data$estimate_init_age_devs = EM2_data_00$estimate_init_age_devs = 0
 EM3_data$estimate_init_age_devs = EM3_data_00$estimate_init_age_devs = 1
 ## sort out parameters
-na_EM2_pars = fix_pars(EM_short_pars, pars_to_exclude = c("ln_sigma_r", "ln_extra_survey_cv", "ln_init_age_devs","ln_sigma_init_age_devs", "ln_F", "ln_catch_sd", "ln_Fmax", "ln_F40", "ln_F35", "ln_F30", "ln_Fmsy", "ln_F_0_1"))
-na_EM3_pars = fix_pars(EM_short_pars, pars_to_exclude = c("ln_sigma_r", "ln_extra_survey_cv", "ln_sigma_init_age_devs", "ln_F", "ln_catch_sd", "ln_Fmax", "ln_F40", "ln_F35", "ln_F30", "ln_Fmsy", "ln_F_0_1"))
-na_EM2_pars_00 = fix_pars(EM_short_00_pars, pars_to_exclude = c("ln_sigma_r", "ln_extra_survey_cv", "ln_init_age_devs","ln_sigma_init_age_devs", "ln_F", "ln_catch_sd", "ln_Fmax", "ln_F40", "ln_F35", "ln_F30", "ln_Fmsy", "ln_F_0_1"))
-na_EM3_pars_00 = fix_pars(EM_short_00_pars, pars_to_exclude = c("ln_sigma_r", "ln_extra_survey_cv", "ln_sigma_init_age_devs", "ln_F", "ln_catch_sd", "ln_Fmax", "ln_F40", "ln_F35", "ln_F30", "ln_Fmsy", "ln_F_0_1"))
-na_EM1_pars = fix_pars(EM_pars, pars_to_exclude =  c("ln_sigma_r", "ln_extra_survey_cv", "ln_F_init", "ln_init_age_devs","ln_sigma_init_age_devs", "ln_F", "ln_catch_sd", "ln_Fmax", "ln_F40", "ln_F35", "ln_F30", "ln_Fmsy", "ln_F_0_1"))
-na_EM1a_pars = fix_pars(EM_pars, pars_to_exclude = c("ln_sigma_r", "ln_extra_survey_cv", "ln_F_init", "ln_init_age_devs","ln_sigma_init_age_devs", "ln_F", "ln_catch_sd", "ln_Fmax", "ln_F40", "ln_F35", "ln_F30", "ln_Fmsy", "ln_F_0_1"))
-na_EM1b_pars = fix_pars(EM_pars, pars_to_exclude = c("ln_sigma_r", "ln_extra_survey_cv", "ln_F_init", "ln_init_age_devs","ln_sigma_init_age_devs", "ln_F", "ln_catch_sd", "ln_Fmax", "ln_F40", "ln_F35", "ln_F30", "ln_Fmsy", "ln_F_0_1"))
-na_EM1_pars_00 = fix_pars(EM_hist_00_pars, pars_to_exclude =  c("ln_sigma_r", "ln_extra_survey_cv", "ln_F_init", "ln_init_age_devs","ln_sigma_init_age_devs", "ln_F", "ln_catch_sd", "ln_Fmax", "ln_F40", "ln_F35", "ln_F30", "ln_Fmsy", "ln_F_0_1"))
-na_EM1a_pars_00 = fix_pars(EM_hist_00_pars, pars_to_exclude = c("ln_sigma_r", "ln_extra_survey_cv", "ln_F_init", "ln_init_age_devs","ln_sigma_init_age_devs", "ln_F", "ln_catch_sd", "ln_Fmax", "ln_F40", "ln_F35", "ln_F30", "ln_Fmsy", "ln_F_0_1"))
-na_EM1b_pars_00 = fix_pars(EM_hist_00_pars, pars_to_exclude = c("ln_sigma_r", "ln_extra_survey_cv", "ln_F_init", "ln_init_age_devs","ln_sigma_init_age_devs", "ln_F", "ln_catch_sd", "ln_Fmax", "ln_F40", "ln_F35", "ln_F30", "ln_Fmsy", "ln_F_0_1"))
+na_EM2_pars = fix_pars(EM_short_pars, pars_to_exclude = c("ln_sigma_r",  "ln_init_age_devs","ln_sigma_init_age_devs", "ln_F", "ln_catch_sd", "ln_Fmax", "ln_F40", "ln_F35", "ln_F30", "ln_Fmsy", "ln_F_0_1"))
+na_EM3_pars = fix_pars(EM_short_pars, pars_to_exclude = c("ln_sigma_r",  "ln_sigma_init_age_devs", "ln_F", "ln_catch_sd", "ln_Fmax", "ln_F40", "ln_F35", "ln_F30", "ln_Fmsy", "ln_F_0_1"))
+na_EM2_pars_00 = fix_pars(EM_short_00_pars, pars_to_exclude = c("ln_sigma_r",  "ln_init_age_devs","ln_sigma_init_age_devs", "ln_F", "ln_catch_sd", "ln_Fmax", "ln_F40", "ln_F35", "ln_F30", "ln_Fmsy", "ln_F_0_1"))
+na_EM3_pars_00 = fix_pars(EM_short_00_pars, pars_to_exclude = c("ln_sigma_r",  "ln_sigma_init_age_devs", "ln_F", "ln_catch_sd", "ln_Fmax", "ln_F40", "ln_F35", "ln_F30", "ln_Fmsy", "ln_F_0_1"))
+na_EM1_pars = fix_pars(EM_pars, pars_to_exclude =  c("ln_sigma_r",  "ln_F_init", "ln_init_age_devs","ln_sigma_init_age_devs", "ln_F", "ln_catch_sd", "ln_Fmax", "ln_F40", "ln_F35", "ln_F30", "ln_Fmsy", "ln_F_0_1"))
+na_EM1a_pars = fix_pars(EM_pars, pars_to_exclude = c("ln_sigma_r",  "ln_F_init", "ln_init_age_devs","ln_sigma_init_age_devs", "ln_F", "ln_catch_sd", "ln_Fmax", "ln_F40", "ln_F35", "ln_F30", "ln_Fmsy", "ln_F_0_1"))
+na_EM1b_pars = fix_pars(EM_pars, pars_to_exclude = c("ln_sigma_r",  "ln_F_init", "ln_init_age_devs","ln_sigma_init_age_devs", "ln_F", "ln_catch_sd", "ln_Fmax", "ln_F40", "ln_F35", "ln_F30", "ln_Fmsy", "ln_F_0_1"))
+na_EM1_pars_00 = fix_pars(EM_hist_00_pars, pars_to_exclude =  c("ln_sigma_r",  "ln_F_init", "ln_init_age_devs","ln_sigma_init_age_devs", "ln_F", "ln_catch_sd", "ln_Fmax", "ln_F40", "ln_F35", "ln_F30", "ln_Fmsy", "ln_F_0_1"))
+na_EM1a_pars_00 = fix_pars(EM_hist_00_pars, pars_to_exclude = c("ln_sigma_r",  "ln_F_init", "ln_init_age_devs","ln_sigma_init_age_devs", "ln_F", "ln_catch_sd", "ln_Fmax", "ln_F40", "ln_F35", "ln_F30", "ln_Fmsy", "ln_F_0_1"))
+na_EM1b_pars_00 = fix_pars(EM_hist_00_pars, pars_to_exclude = c("ln_sigma_r",  "ln_F_init", "ln_init_age_devs","ln_sigma_init_age_devs", "ln_F", "ln_catch_sd", "ln_Fmax", "ln_F40", "ln_F35", "ln_F30", "ln_Fmsy", "ln_F_0_1"))
 ## test these pars
 test <- MakeADFun(EM2_data, EM_short_pars, map = na_EM2_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
 test <- MakeADFun(EM3_data, EM_short_pars, map = na_EM3_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
@@ -384,9 +395,9 @@ for(init_ndx in 1:length(inital_levels)) {
       EM1b_data$catches[1:n_years_historic, ] = matrix(OM_sim$catches[1:n_years_historic, ] * (1 - under_over_reporting_fraction), ncol = 1) ## under-reported
       EM2_data$catches = EM3_data$catches = matrix(OM_sim$catches[data_year_ndx, ], ncol = 1)
       EM2_data_00$catches = EM3_data_00$catches = matrix(OM_sim$catches[data_year_00_ndx, ], ncol = 1)
-      EM1_data_00$catches = matrix(OM_sim$catches[data_hist_year_00_ndx, ], ncol = 1)
-      EM1a_data_00$catches = matrix(OM_sim$catches[data_hist_year_00_ndx, ] * (1 + under_over_reporting_fraction), ncol = 1)
-      EM1b_data_00$catches = matrix(OM_sim$catches[data_hist_year_00_ndx, ] * (1 - under_over_reporting_fraction), ncol = 1)
+      EM1_data_00$catches = EM1a_data_00$catches =  EM1b_data_00$catches = matrix(OM_sim$catches[data_hist_year_00_ndx, ], ncol = 1)
+      EM1a_data_00$catches[1:n_years_historic, ] = matrix(EM1a_data_00$catches[1:n_years_historic, ] * (1 + under_over_reporting_fraction), ncol = 1)
+      EM1b_data_00$catches[1:n_years_historic, ] = matrix(EM1b_data_00$catches[1:n_years_historic, ] * (1 - under_over_reporting_fraction), ncol = 1)
       ## observations
       EM1_data$survey_obs = EM1a_data$survey_obs = EM1b_data$survey_obs = OM_sim$survey_obs
       EM1_data$survey_cv = EM1a_data$survey_cv = EM1b_data$survey_cv = OM_sim$survey_cv
@@ -669,4 +680,16 @@ saveRDS(object = mle_lst_EM3_00, file = file.path(output_data, "mle_lst_EM3_00.R
 #saveRDS(object = OM_obj, file = file.path(output_data, "OM_obj.RDS"))
 saveRDS(object = OM_sim_lst, file = file.path(output_data, "OM_sim_lst.RDS"))
 saveRDS(object = OM_rep_lst, file = file.path(output_data, "OM_rep_lst.RDS"))
+
+## save convergence rates
+saveRDS(object = EM1_convergence, file = file.path(output_data, "convergence_EM1.RDS"))
+saveRDS(object = EM1a_convergence, file = file.path(output_data, "convergence_EM1a.RDS"))
+saveRDS(object = EM1b_convergence, file = file.path(output_data, "convergence_EM1b.RDS"))
+saveRDS(object = EM2_convergence, file = file.path(output_data, "convergence_EM2.RDS"))
+saveRDS(object = EM3_convergence, file = file.path(output_data, "convergence_EM3.RDS"))
+saveRDS(object = EM1_00_convergence, file = file.path(output_data, "convergence_EM1_00.RDS"))
+saveRDS(object = EM1a_00_convergence, file = file.path(output_data, "convergence_EM1a_00.RDS"))
+saveRDS(object = EM1b_00_convergence, file = file.path(output_data, "convergence_EM1b_00.RDS"))
+saveRDS(object = EM2_00_convergence, file = file.path(output_data, "convergence_EM2_00.RDS"))
+saveRDS(object = EM3_00_convergence, file = file.path(output_data, "convergence_EM3_00.RDS"))
 
