@@ -303,7 +303,7 @@ OM_short$fn()
 ## --> Initial
 ## ----> rebuild 
 ## ------> Simulations
-n_sims = 100
+n_sims = 500
 SSB_df = recruit_df = depletion_df = NULL
 inital_levels = c(25, 100)# c(25, 50, 75, 100)
 rebuild_levels = c(20, 50) # c(20, 35, 50)

@@ -25,6 +25,9 @@ OM_label = "Medium_OM3"
 output_data = file.path(DIR$data, OM_label)
 if(!dir.exists(output_data))
   dir.create(output_data)
+output_fig_dir = file.path(DIR$fig, OM_label)
+if(!dir.exists(output_fig_dir))
+  dir.create(output_fig_dir)
 
 n_last_ycs_to_estimate = 1;
 n_first_ycs_to_estimate = 1; ## you may want to shift this depending on when data starts recruits are observed
@@ -238,6 +241,7 @@ EM2_data$estimate_F_init = 1
 na_EM2_pars = fix_pars(EM_short_pars, pars_to_exclude = c("ln_sigma_r",  "ln_init_age_devs","ln_sigma_init_age_devs", "ln_F", "ln_catch_sd", "ln_Fmax", "ln_F40", "ln_F35", "ln_F30", "ln_Fmsy", "ln_F_0_1"))
 r0_profile_map = fix_pars(EM_short_pars, pars_to_exclude = c("ln_R0", "ln_sigma_r",  "ln_init_age_devs","ln_sigma_init_age_devs", "ln_F", "ln_catch_sd", "ln_Fmax", "ln_F40", "ln_F35", "ln_F30", "ln_Fmsy", "ln_F_0_1"))
 F_init_profile_map = fix_pars(EM_short_pars, pars_to_exclude = c("ln_F_init", "ln_sigma_r",  "ln_init_age_devs","ln_sigma_init_age_devs", "ln_F", "ln_catch_sd", "ln_Fmax", "ln_F40", "ln_F35", "ln_F30", "ln_Fmsy", "ln_F_0_1"))
+joint_profile_map = fix_pars(EM_short_pars, pars_to_exclude = c("ln_R0", "ln_F_init","ln_sigma_r",  "ln_init_age_devs","ln_sigma_init_age_devs", "ln_F", "ln_catch_sd", "ln_Fmax", "ln_F40", "ln_F35", "ln_F30", "ln_Fmsy", "ln_F_0_1"))
 
 ## test these pars
 test <- MakeADFun(EM2_data, EM_short_pars, map = na_EM2_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
@@ -251,9 +255,9 @@ EM_short_pars$ln_F_init = log(0.07)
 # Start Simulations
 # 
 #
-R0_profiles = F_init_profiles = list()
-ln_R0_vals = seq(from = 11, to = 16, by = 0.2)
-ln_finit_vals = log(seq(from = 0.01, to = 0.1, by = 0.01))
+R0_profiles = F_init_profiles = joint_profiles = list()
+ln_R0_vals = seq(from = 12.8, to = 15, by = 0.1)
+ln_finit_vals = log(c(0.0001, seq(from = 0.01, to = 0.1, by = 0.01)))
 
 for(init_ndx in 1:length(inital_levels)) {
   cat("init ndx ", init_ndx, "\n")
@@ -322,6 +326,7 @@ for(init_ndx in 1:length(inital_levels)) {
       EM2_rep = EM2_obj$report(mle_EM2$par)
       mle_lst_EM2[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]] = EM2_rep
     }
+    ## seperate profiles
     ## run profiles
     r0_pars = EM_short_pars;
     for(r0_ndx in 1:length(ln_R0_vals)) {
@@ -353,6 +358,237 @@ for(init_ndx in 1:length(inital_levels)) {
       EM2_rep_finit = EM2_obj_Finit$report(mle_EM2_Finit$par)
       F_init_profiles[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]][[as.character(finit_ndx)]] = EM2_rep_finit
     }
+    ## Joint profile 2d
+    joint_pars = EM_short_pars;
+    for(r0_ndx in 1:length(ln_R0_vals)) {
+      for(finit_ndx in 1:length(ln_finit_vals)) {
+        joint_pars$ln_R0 = ln_R0_vals[r0_ndx]
+        joint_pars$ln_F_init  = ln_finit_vals[finit_ndx]
+      
+        EM2_obj <- MakeADFun(EM2_data, joint_pars, map = joint_profile_map, DLL= "AgeStructuredModel", checkParameterOrder = T, silent = T)
+        mle_EM2_joint = nlminb(start = EM2_obj$par, objective = EM2_obj$fn, gradient  = EM2_obj$gr, control = list(iter.max = 10000, eval.max = 10000))
+        ## check positive definite hessian
+        g = as.numeric(EM2_obj$gr(mle_EM2_joint$par))
+        hessian = tryCatch(expr = optimHess(mle_EM2_joint$par, fn = EM2_obj$fn, gr = EM2_obj$gr), error = function(e){e})
+        if(inherits(hessian, "error") | inherits(hessian, "warning")) {
+          cat("R0 ndx = ", r0_ndx, " F init ndx = ", finit_ndx, " hessian not PD")
+          next;
+        }
+        EM2_rep_joint = EM2_obj$report(mle_EM2_joint$par)
+        joint_profiles[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]][[as.character(finit_ndx)]][[as.character(r0_ndx)]] = EM2_rep_joint
+      }
+    }
   }
 }
+
+
+## summarise log-likelihood fits
+## for the F-init parameter
+finit_joint_nll = finit_recruit_nll = finit_catch_nll = finit_s_ndx_nll = finit_s_AF_nll = finit_F_AF_nll =NULL
+for(init_ndx in 1:length(inital_levels)) {
+  for(rebuild_ndx in 1:length(rebuild_levels)) {
+    tmp_finit_join_nll = get_multiple_scalar_vals(F_init_profiles[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], "joint_nll")
+    tmp_finit_join_nll$init = paste0("init ", inital_levels[init_ndx])
+    tmp_finit_join_nll$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])
+    tmp_finit_join_nll$F_init = exp(ln_finit_vals)[as.integer(tmp_finit_join_nll$sim_iter)]
+    tmp_finit_join_nll$observation = "joint"
+    finit_joint_nll = rbind(finit_joint_nll, tmp_finit_join_nll)
+    
+    tmp_finit_recruit_nll = get_multiple_scalar_vals(F_init_profiles[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], "recruit_nll")
+    tmp_finit_recruit_nll$init = paste0("init ", inital_levels[init_ndx])
+    tmp_finit_recruit_nll$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])
+    tmp_finit_recruit_nll$F_init = exp(ln_finit_vals)[as.integer(tmp_finit_join_nll$sim_iter)]
+    tmp_finit_recruit_nll$observation = "recruit pen"
+    finit_recruit_nll = rbind(finit_recruit_nll, tmp_finit_recruit_nll)
+    
+    tmp_finit_catch_nll = get_multiple_scalar_vals(F_init_profiles[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], "catch_nll")
+    tmp_finit_catch_nll$init = paste0("init ", inital_levels[init_ndx])
+    tmp_finit_catch_nll$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])
+    tmp_finit_catch_nll$F_init = exp(ln_finit_vals)[as.integer(tmp_finit_join_nll$sim_iter)]
+    tmp_finit_catch_nll$observation = "Catch"
+    finit_catch_nll = rbind(finit_catch_nll, tmp_finit_catch_nll)
+    
+    tmp_finit_S_AF_nll = get_multiple_scalar_vals(F_init_profiles[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], "survey_comp_nll")
+    tmp_finit_S_AF_nll$init = paste0("init ", inital_levels[init_ndx])
+    tmp_finit_S_AF_nll$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])
+    tmp_finit_S_AF_nll$F_init = exp(ln_finit_vals)[as.integer(tmp_finit_join_nll$sim_iter)]
+    tmp_finit_S_AF_nll$observation = "Survey AF"
+    finit_s_AF_nll = rbind(finit_s_AF_nll, tmp_finit_S_AF_nll)
+    
+    tmp_finit_S_ndx_nll = get_multiple_scalar_vals(F_init_profiles[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], "survey_index_nll")
+    tmp_finit_S_ndx_nll$init = paste0("init ", inital_levels[init_ndx])
+    tmp_finit_S_ndx_nll$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])
+    tmp_finit_S_ndx_nll$F_init = exp(ln_finit_vals)[as.integer(tmp_finit_join_nll$sim_iter)]
+    tmp_finit_S_ndx_nll$observation = "Survey index"
+    finit_s_ndx_nll = rbind(finit_s_ndx_nll, tmp_finit_S_ndx_nll)
+    
+    tmp_finit_F_AF_nll = get_multiple_scalar_vals(F_init_profiles[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], "fishery_comp_nll")
+    tmp_finit_F_AF_nll$init = paste0("init ", inital_levels[init_ndx])
+    tmp_finit_F_AF_nll$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])
+    tmp_finit_F_AF_nll$F_init = exp(ln_finit_vals)[as.integer(tmp_finit_join_nll$sim_iter)]
+    tmp_finit_F_AF_nll$observation = "fishery AF"
+    finit_F_AF_nll = rbind(finit_F_AF_nll, tmp_finit_F_AF_nll)
+  }
+}
+
+## plot likelihoods across scenarios
+full_nll = rbind(finit_joint_nll, finit_recruit_nll,finit_catch_nll,finit_s_ndx_nll, finit_s_AF_nll, finit_F_AF_nll)
+full_nll$init = factor(full_nll$init, levels = paste0("init ", inital_levels), ordered =T)
+full_nll = full_nll %>% group_by(observation, init, rebuild) %>% mutate(stand_value = value - min(value))
+ggplot(full_nll, aes(x = F_init, y = stand_value, col = observation, linetype = observation)) +
+  geom_line(linewidth = 1.1) +
+  facet_grid(init~rebuild) +
+  ylab("Negative log-likelihood") +
+  ylab("F-init") +
+  theme_bw() +
+  ylim(0,1000) #+
+  #geom_vline(xintercept = OM_report$F_init, linewidth = 1.1, linetype = "dashed", col = "red") 
+ggsave(filename = file.path(output_fig_dir, "Finit_likelihood.png"), width =10, height = 8)
+
+## summarise log-likelihood fits
+## for the F-init parameter
+R0_joint_nll = r0_finit = R0_recruit_nll = R0_catch_nll = R0_s_ndx_nll = R0_s_AF_nll = R0_F_AF_nll =NULL
+for(init_ndx in 1:length(inital_levels)) {
+  for(rebuild_ndx in 1:length(rebuild_levels)) {
+    tmp_R0_join_nll = get_multiple_scalar_vals(R0_profiles[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], "joint_nll")
+    tmp_R0_join_nll$init = paste0("init ", inital_levels[init_ndx])
+    tmp_R0_join_nll$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])
+    tmp_R0_join_nll$R0 = exp(ln_R0_vals)[as.integer(tmp_R0_join_nll$sim_iter)]
+    tmp_R0_join_nll$observation = "joint"
+    R0_joint_nll = rbind(R0_joint_nll, tmp_R0_join_nll)
+    
+    tmp_R0_recruit_nll = get_multiple_scalar_vals(R0_profiles[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], "recruit_nll")
+    tmp_R0_recruit_nll$init = paste0("init ", inital_levels[init_ndx])
+    tmp_R0_recruit_nll$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])
+    tmp_R0_recruit_nll$R0 = exp(ln_R0_vals)[as.integer(tmp_R0_join_nll$sim_iter)]
+    tmp_R0_recruit_nll$observation = "recruit pen"
+    R0_recruit_nll = rbind(R0_recruit_nll, tmp_R0_recruit_nll)
+    
+    tmp_R0_catch_nll = get_multiple_scalar_vals(R0_profiles[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], "catch_nll")
+    tmp_R0_catch_nll$init = paste0("init ", inital_levels[init_ndx])
+    tmp_R0_catch_nll$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])
+    tmp_R0_catch_nll$R0 = exp(ln_R0_vals)[as.integer(tmp_R0_join_nll$sim_iter)]
+    tmp_R0_catch_nll$observation = "Catch"
+    R0_catch_nll = rbind(R0_catch_nll, tmp_R0_catch_nll)
+    
+    tmp_R0_S_AF_nll = get_multiple_scalar_vals(R0_profiles[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], "survey_comp_nll")
+    tmp_R0_S_AF_nll$init = paste0("init ", inital_levels[init_ndx])
+    tmp_R0_S_AF_nll$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])
+    tmp_R0_S_AF_nll$R0 = exp(ln_R0_vals)[as.integer(tmp_R0_join_nll$sim_iter)]
+    tmp_R0_S_AF_nll$observation = "Survey AF"
+    R0_s_AF_nll = rbind(R0_s_AF_nll, tmp_R0_S_AF_nll)
+    
+    tmp_R0_S_ndx_nll = get_multiple_scalar_vals(R0_profiles[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], "survey_index_nll")
+    tmp_R0_S_ndx_nll$init = paste0("init ", inital_levels[init_ndx])
+    tmp_R0_S_ndx_nll$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])
+    tmp_R0_S_ndx_nll$R0 = exp(ln_R0_vals)[as.integer(tmp_R0_join_nll$sim_iter)]
+    tmp_R0_S_ndx_nll$observation = "Survey index"
+    R0_s_ndx_nll = rbind(R0_s_ndx_nll, tmp_R0_S_ndx_nll)
+    
+    tmp_R0_F_AF_nll = get_multiple_scalar_vals(R0_profiles[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], "fishery_comp_nll")
+    tmp_R0_F_AF_nll$init = paste0("init ", inital_levels[init_ndx])
+    tmp_R0_F_AF_nll$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])
+    tmp_R0_F_AF_nll$R0 = exp(ln_R0_vals)[as.integer(tmp_R0_join_nll$sim_iter)]
+    tmp_R0_F_AF_nll$observation = "fishery AF"
+    R0_F_AF_nll = rbind(R0_F_AF_nll, tmp_R0_F_AF_nll)
+    
+    tmp_R0_finit = get_multiple_scalar_vals(R0_profiles[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], "F_init")
+    tmp_R0_finit$init = paste0("init ", inital_levels[init_ndx])
+    tmp_R0_finit$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])
+    tmp_R0_finit$R0 = exp(ln_R0_vals)[as.integer(tmp_R0_join_nll$sim_iter)]
+    r0_finit = rbind(r0_finit, tmp_R0_finit)
+  }
+}
+cor(r0_finit$R0, r0_finit$value)
+plot(r0_finit$R0, r0_finit$value)
+ggplot(r0_finit, aes(x = R0, y = value)) +
+  geom_point() +
+  facet_grid(rebuild~init) +
+  theme_bw() 
+
+## plot likelihoods across scenarios
+full_R0_nll = rbind(R0_joint_nll, R0_recruit_nll,R0_catch_nll,R0_s_ndx_nll, R0_s_AF_nll, R0_F_AF_nll)
+full_R0_nll$init = factor(full_R0_nll$init, levels = paste0("init ", inital_levels), ordered =T)
+full_R0_nll = full_R0_nll %>% group_by(observation, init, rebuild) %>% mutate(stand_value = value - min(value))
+ggplot(full_R0_nll, aes(x = R0, y = stand_value, col = observation, linetype = observation)) +
+  geom_line(linewidth = 1.1) +
+  facet_grid(init~rebuild) +
+  theme_bw() +
+  ylab("Negative log-likelihood") +
+  geom_vline(xintercept = OM_report$R0, linewidth = 1.1, linetype = "dashed", col = "red") +
+  ylim(0,200) +
+  xlab("R0") +
+  xlim(1e6, 3e6)
+ggsave(filename = file.path(output_fig_dir, "R0_likelihood.png"), width =10, height = 8)
+
+
+## do a joint contour plot with R0 and F_init
+R0_joint_nll = R0_recruit_nll = R0_catch_nll = R0_s_ndx_nll = R0_s_AF_nll = R0_F_AF_nll =NULL
+for(init_ndx in 1:length(inital_levels)) {
+  for(rebuild_ndx in 1:length(rebuild_levels)) {
+    for(finit_ndx in 1:length(ln_finit_vals)) {
+      tmp_R0_join_nll = get_multiple_scalar_vals(joint_profiles[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]][[as.character(finit_ndx)]], "joint_nll")
+      tmp_R0_join_nll$init = paste0("init ", inital_levels[init_ndx])
+      tmp_R0_join_nll$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])
+      tmp_R0_join_nll$Finit = exp(ln_finit_vals)[finit_ndx]
+      tmp_R0_join_nll$R0 = exp(ln_R0_vals)[as.integer(tmp_R0_join_nll$sim_iter)]
+      tmp_R0_join_nll$observation = "joint"
+      R0_joint_nll = rbind(R0_joint_nll, tmp_R0_join_nll)
+      
+      tmp_R0_recruit_nll = get_multiple_scalar_vals(joint_profiles[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]][[as.character(finit_ndx)]], "recruit_nll")
+      tmp_R0_recruit_nll$init = paste0("init ", inital_levels[init_ndx])
+      tmp_R0_recruit_nll$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])
+      tmp_R0_recruit_nll$R0 = exp(ln_R0_vals)[as.integer(tmp_R0_join_nll$sim_iter)]
+      tmp_R0_recruit_nll$Finit = exp(ln_finit_vals)[finit_ndx]
+      tmp_R0_recruit_nll$observation = "recruit pen"
+      R0_recruit_nll = rbind(R0_recruit_nll, tmp_R0_recruit_nll)
+      
+      tmp_R0_catch_nll = get_multiple_scalar_vals(joint_profiles[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]][[as.character(finit_ndx)]], "catch_nll")
+      tmp_R0_catch_nll$init = paste0("init ", inital_levels[init_ndx])
+      tmp_R0_catch_nll$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])
+      tmp_R0_catch_nll$R0 = exp(ln_R0_vals)[as.integer(tmp_R0_join_nll$sim_iter)]
+      tmp_R0_catch_nll$Finit = exp(ln_finit_vals)[finit_ndx]
+      tmp_R0_catch_nll$observation = "Catch"
+      R0_catch_nll = rbind(R0_catch_nll, tmp_R0_catch_nll)
+      
+      tmp_R0_S_AF_nll = get_multiple_scalar_vals(joint_profiles[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]][[as.character(finit_ndx)]], "survey_comp_nll")
+      tmp_R0_S_AF_nll$init = paste0("init ", inital_levels[init_ndx])
+      tmp_R0_S_AF_nll$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])
+      tmp_R0_S_AF_nll$R0 = exp(ln_R0_vals)[as.integer(tmp_R0_join_nll$sim_iter)]
+      tmp_R0_S_AF_nll$Finit = exp(ln_finit_vals)[finit_ndx]
+      tmp_R0_S_AF_nll$observation = "Survey AF"
+      R0_s_AF_nll = rbind(R0_s_AF_nll, tmp_R0_S_AF_nll)
+      
+      tmp_R0_S_ndx_nll = get_multiple_scalar_vals(joint_profiles[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]][[as.character(finit_ndx)]], "survey_index_nll")
+      tmp_R0_S_ndx_nll$init = paste0("init ", inital_levels[init_ndx])
+      tmp_R0_S_ndx_nll$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])
+      tmp_R0_S_ndx_nll$R0 = exp(ln_R0_vals)[as.integer(tmp_R0_join_nll$sim_iter)]
+      tmp_R0_S_ndx_nll$Finit = exp(ln_finit_vals)[finit_ndx]
+      tmp_R0_S_ndx_nll$observation = "Survey index"
+      R0_s_ndx_nll = rbind(R0_s_ndx_nll, tmp_R0_S_ndx_nll)
+      
+      tmp_R0_F_AF_nll = get_multiple_scalar_vals(joint_profiles[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]][[as.character(finit_ndx)]], "fishery_comp_nll")
+      tmp_R0_F_AF_nll$init = paste0("init ", inital_levels[init_ndx])
+      tmp_R0_F_AF_nll$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])
+      tmp_R0_F_AF_nll$R0 = exp(ln_R0_vals)[as.integer(tmp_R0_join_nll$sim_iter)]
+      tmp_R0_F_AF_nll$Finit = exp(ln_finit_vals)[finit_ndx]
+      tmp_R0_F_AF_nll$observation = "fishery AF"
+      R0_F_AF_nll = rbind(R0_F_AF_nll, tmp_R0_F_AF_nll)
+      
+      R0s = get_multiple_scalar_vals(joint_profiles[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]][[as.character(finit_ndx)]], "R0")
+      Finits = get_multiple_scalar_vals(joint_profiles[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]][[as.character(finit_ndx)]], "F_init")
+      
+      
+    }
+  }
+}
+    
+## plot likelihoods across scenarios
+full_joint_nll = rbind(R0_joint_nll, R0_recruit_nll,R0_catch_nll,R0_s_ndx_nll, R0_s_AF_nll, R0_F_AF_nll)
+full_joint_nll$init = factor(full_joint_nll$init, levels = paste0("init ", inital_levels), ordered =T)
+
+ggplot(full_joint_nll %>% filter(observation == "joint"), aes(x = (Finit), y = log(R0), z = value)) +
+  geom_contour_filled() +
+  facet_grid(rebuild~init) +
+  theme_bw() 
 
