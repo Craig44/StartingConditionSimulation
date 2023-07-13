@@ -35,7 +35,7 @@ if(!dir.exists(fig_dir))
 
 this_bio = readRDS(file = file.path(DIR$data, "Fast_biology.RDS"))
 
-OM_label = "Fast_OM1"
+OM_label = "Fast_OM2"
 output_data = file.path(DIR$data, OM_label)
 if(!dir.exists(output_data))
   dir.create(output_data)
@@ -316,8 +316,8 @@ OM_short$fn()
 ## ------> Simulations
 n_sims = 100
 SSB_df = recruit_df = depletion_df = NULL
-inital_levels = c(25, 100)# c(25, 50, 75, 100)
-rebuild_levels = c(20, 50) # c(20, 35, 50)
+inital_levels =  c(25, 50, 75, 100) #c(25, 100)#
+rebuild_levels =  c(20, 35, 50) #c(20, 50) #
 EM1a_data = EM1b_data = EM1_data
 EM2_data = EM3_data = EM_short_data
 EM2_data_00 = EM3_data_00 = EM_short_data_00
@@ -374,7 +374,56 @@ mle_lst_EM3_00 = readRDS(file = file.path(output_data, "mle_lst_EM3_00.RDS"))
 OM_sim_lst = readRDS(file = file.path(output_data, "OM_sim_lst.RDS"))
 OM_rep_lst = readRDS(file = file.path(output_data, "OM_rep_lst.RDS"))
 
+## read in Standard errors
+se_lst_EM1 = readRDS(file = file.path(output_data, "se_lst_EM1.RDS"))
+se_lst_EM1a = readRDS(file = file.path(output_data, "se_lst_EM1a.RDS"))
+se_lst_EM1b = readRDS(file = file.path(output_data, "se_lst_EM1b.RDS"))
+se_lst_EM2 = readRDS(file = file.path(output_data, "se_lst_EM2.RDS"))
+se_lst_EM3 = readRDS(file = file.path(output_data, "se_lst_EM3.RDS"))
 
+## summarise convergence
+EM1_convergence = readRDS(file = file.path(output_data, "convergence_EM1.RDS"))
+EM1a_convergence = readRDS(file = file.path(output_data, "convergence_EM1a.RDS"))
+EM1b_convergence = readRDS(file = file.path(output_data, "convergence_EM1b.RDS"))
+EM2_convergence = readRDS(file = file.path(output_data, "convergence_EM2.RDS"))
+EM3_convergence = readRDS(file = file.path(output_data, "convergence_EM3.RDS"))
+EM1_00_convergence = readRDS(file = file.path(output_data, "convergence_EM1_00.RDS"))
+EM1a_00_convergence = readRDS(file = file.path(output_data, "convergence_EM1a_00.RDS"))
+EM1b_00_convergence = readRDS(file = file.path(output_data, "convergence_EM1b_00.RDS"))
+EM2_00_convergence = readRDS(file = file.path(output_data, "convergence_EM2_00.RDS"))
+EM3_00_convergence = readRDS(file = file.path(output_data, "convergence_EM3_00.RDS"))
+
+dimnames(EM1_convergence) = dimnames(EM1a_convergence) = dimnames(EM1b_convergence) = dimnames(EM2_convergence) = dimnames(EM3_convergence) = 
+  dimnames(EM1_00_convergence) = dimnames(EM1a_00_convergence) = dimnames(EM1b_00_convergence) = dimnames(EM2_00_convergence) = dimnames(EM3_00_convergence) =list(inital_levels, rebuild_levels, 1:dim(EM1_convergence)[3])
+n_sims = dim(EM1_convergence)[3]
+EM1_con = melt(EM1_convergence, varnames = c("init", "rebuild", "sim"), value.name = "convergence")
+EM1_con$model = "EM1"
+EM1a_con = melt(EM1a_convergence, varnames = c("init", "rebuild", "sim"), value.name = "convergence")
+EM1a_con$model = "EM1a"
+EM1b_con = melt(EM1b_convergence, varnames = c("init", "rebuild", "sim"), value.name = "convergence")
+EM1b_con$model = "EM1b"
+EM2_con = melt(EM2_convergence, varnames = c("init", "rebuild", "sim"), value.name = "convergence")
+EM2_con$model = "EM2"
+EM3_con = melt(EM3_convergence, varnames = c("init", "rebuild", "sim"), value.name = "convergence")
+EM3_con$model = "EM3"
+EM1_00_con = melt(EM1_00_convergence, varnames = c("init", "rebuild", "sim"), value.name = "convergence")
+EM1_00_con$model = "EM1_00"
+EM1a_00_con = melt(EM1a_00_convergence, varnames = c("init", "rebuild", "sim"), value.name = "convergence")
+EM1a_00_con$model = "EM1a_00"
+EM1b_00_con = melt(EM1b_00_convergence, varnames = c("init", "rebuild", "sim"), value.name = "convergence")
+EM1b_00_con$model = "EM1b_00"
+EM2_00_con = melt(EM2_00_convergence, varnames = c("init", "rebuild", "sim"), value.name = "convergence")
+EM2_00_con$model = "EM2_00"
+EM3_00_con = melt(EM3_00_convergence, varnames = c("init", "rebuild", "sim"), value.name = "convergence")
+EM3_00_con$model = "EM3_00"
+# merge them all together
+full_con = rbind(EM1_con, EM1a_con,EM1b_con,EM2_con,EM3_con,
+                 EM1_00_con, EM1a_00_con,EM1b_00_con,EM2_00_con,EM3_00_con)
+## plot convergence table
+convergence_tab = full_con %>% group_by(model, init, rebuild) %>% summarise(proportion_converged = sum(convergence) / n_sims * 100) %>%
+  pivot_wider(id_cols = c("init","rebuild"), names_from = model, values_from = proportion_converged)
+write.table(x = convergence_tab, file = file.path(output_fig_dir, "Convergence_table.txt"), row.names = F, col.names = T, quote = F)
+convergence_tab
 #########
 ## Plot across all OM & EMs
 #########
@@ -621,8 +670,28 @@ ggplot(full_Bzero) +
   ggtitle("B0") +
   labs(x ="", y = "Relative error in B0") +
   ylim(-70,70) +
-  theme(axis.text.x = element_text(angle = 90))
+  theme(axis.text.x = element_text(angle = 90),
+        strip.text = element_text(size = 14),
+        axis.title = element_text(size = 12))
 ggsave(filename = file.path(output_fig_dir, "B0_RE.png"), width =10, height = 8)
+
+## Nominal confidence coverage
+OM_bzero = OM_report$B0
+OM_CI_df = NULL
+for(init_ndx in 1:length(inital_levels)) {
+  for(rebuild_ndx in 1:length(rebuild_levels)) {
+    EM1_b0 = get_Bzero_coverage(mle_lst = se_lst_EM1[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], OM_val = OM_bzero)
+    EM1a_b0 = get_Bzero_coverage(mle_lst = se_lst_EM1a[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], OM_val = OM_bzero)
+    EM1b_b0 = get_Bzero_coverage(mle_lst = se_lst_EM1b[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], OM_val = OM_bzero)
+    EM2_b0 = get_Bzero_coverage(mle_lst = se_lst_EM2[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], OM_val = OM_bzero)
+    EM3_b0 = get_Bzero_coverage(mle_lst = se_lst_EM3[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], OM_val = OM_bzero)
+    tmp_df = data.frame(rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx]), init = paste0("init ", inital_levels[init_ndx]), model = c("EM1", "EM1a", "EM1b", "EM2", "EM3"), proportion = c(sum(EM1_b0)/length(EM1_b0), sum(EM1a_b0)/length(EM1a_b0), sum(EM1b_b0)/length(EM1b_b0), sum(EM2_b0)/length(EM2_b0), sum(EM3_b0)/length(EM3_b0)))
+    OM_CI_df = rbind(OM_CI_df, tmp_df)
+  }
+}
+
+Bzero_CI = OM_CI_df %>% pivot_wider(id_cols = c("rebuild", "init"), names_from = model, values_from = proportion)
+write.table(x = Bzero_CI, file = file.path(output_fig_dir, "Bzero_coverage_table.txt"), row.names = F, col.names = T, quote = F)
 
 ## Get a range of reference points
 full_survey_q = NULL
@@ -863,7 +932,10 @@ ggplot(full_terminal_depletion %>% filter(names == 2020), aes(x = model.x, group
   theme_bw() +
   ggtitle("") +
   ylab("Relative error in depletion for terminal year") +
-  facet_grid(rebuild~init)
+  facet_grid(rebuild~init) +
+  theme(axis.text.x = element_text(angle = 90),
+        strip.text = element_text(size = 14),
+        axis.title = element_text(size = 12))
 ggsave(filename = file.path(output_fig_dir, "RE_terminal_depletion.png"), width =10, height = 8)
 
 ## calculate the MARE over simulations
@@ -873,9 +945,11 @@ depletion_MARE %>% group_by(init, rebuild, model.x) %>% summarise(min = min(MARE
 ggplot(depletion_MARE, aes(x = model.x, group = model.x)) +
   geom_boxplot(aes(y = MARE)) + 
   theme_bw() +
-  facet_grid(init~rebuild) +
+  facet_grid(rebuild~init) +
   ylab("Median absolute relative error (depletion all years)") +
-  theme(axis.text.x = element_text(angle = 90))
+  theme(axis.text.x = element_text(angle = 90),
+        strip.text = element_text(size = 14),
+        axis.title = element_text(size = 12))
 ggsave(filename = file.path(output_fig_dir, "Depletion_MARE.png"), width =10, height = 8)
 
 ## Relative error in depletion in terminal year 
@@ -885,9 +959,29 @@ ggplot(full_terminal_depletion %>% filter(names == max(full_years)), aes(x = mod
   theme_bw() +
   labs(x = "EM", y = "Relative error in depletion for terminal year") +
   facet_grid(rebuild~init) +
-  theme(axis.text.x = element_text(angle = 90))
+  theme(axis.text.x = element_text(angle = 90),
+        strip.text = element_text(size = 14),
+        axis.title = element_text(size = 12))
 
 ggsave(filename = file.path(output_fig_dir, "RE_terminal_year.png"), width =10, height = 8)
+## Nominal confidence coverage
+OM_CI_df = NULL
+for(init_ndx in 1:length(inital_levels)) {
+  for(rebuild_ndx in 1:length(rebuild_levels)) {
+    OM_depletion = get_multiple_vectors(OM_rep_lst[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], "depletion", element_labs = full_years)
+    OM_depletion = OM_depletion %>% filter(names == 2020)
+    EM1_b0 = get_terminal_depletion_coverage(mle_lst = se_lst_EM1[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], OM_val = OM_depletion)
+    EM1a_b0 = get_terminal_depletion_coverage(mle_lst = se_lst_EM1a[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], OM_val = OM_depletion)
+    EM1b_b0 = get_terminal_depletion_coverage(mle_lst = se_lst_EM1b[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], OM_val = OM_depletion)
+    EM2_b0 = get_terminal_depletion_coverage(mle_lst = se_lst_EM2[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], OM_val = OM_depletion)
+    EM3_b0 = get_terminal_depletion_coverage(mle_lst = se_lst_EM3[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], OM_val = OM_depletion)
+    tmp_df = data.frame(rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx]), init = paste0("init ", inital_levels[init_ndx]), model = c("EM1", "EM1a", "EM1b", "EM2", "EM3"), proportion = c(sum(EM1_b0)/length(EM1_b0), sum(EM1a_b0)/length(EM1a_b0), sum(EM1b_b0)/length(EM1b_b0), sum(EM2_b0)/length(EM2_b0), sum(EM3_b0)/length(EM3_b0)), n = c(length(EM1_b0), length(EM1a_b0),length(EM1b_b0), length(EM2_b0), length(EM3_b0)))
+    OM_CI_df = rbind(OM_CI_df, tmp_df)
+  }
+}
+
+Terminal_Depletion_CI = OM_CI_df %>% pivot_wider(id_cols = c("rebuild", "init"), names_from = model, values_from = proportion)
+write.table(x = Bzero_CI, file = file.path(output_fig_dir, "Bzero_coverage_table.txt"), row.names = F, col.names = T, quote = F)
 
 
 ## Get a range of reference points
@@ -995,7 +1089,9 @@ ggplot(full_ssb %>% filter(names == max(full_years)), aes(x = model.x, group = m
   theme_bw() +
   labs(x = "EM", y = "Relative error in SSB for terminal year") +
   facet_grid(rebuild~init) +
-  theme(axis.text.x = element_text(angle = 90))
+  theme(axis.text.x = element_text(angle = 90),
+        strip.text = element_text(size = 14),
+        axis.title = element_text(size = 12))
 
 ggsave(filename = file.path(output_fig_dir, "RE_terminal_year_SSB.png"), width =10, height = 8)
 
@@ -1708,6 +1804,13 @@ full_survey_AF = full_survey_AF %>% left_join(OM_survey_AF, by = c("Age","sim_it
 ## calculate RE
 full_survey_AF = full_survey_AF %>% group_by(Age, sim_iter, init, rebuild, year) %>% mutate(RE = (fit.x - fit.y)/ fit.y * 100)
 full_survey_AF$init = factor(full_survey_AF$init, levels = paste0("init ", inital_levels), ordered =T)
+# look at the fit in the first year
+# for one simulation acros EM's
+ggplot(full_survey_AF %>% filter(sim_iter == 1, year == 1960), aes(x = Age, group = Age)) +
+  geom_point(aes(y = Observed, col = "Observed")) +
+  geom_line(aes(y = Predicted, col = model.x, linetype = model.x)) +
+  theme_bw() +
+  facet_grid(init~rebuild) 
 ## plot the relative error
 ggplot(full_survey_AF %>% filter(model.x == "EM1", year == 1981), aes(x = Age, group = Age, y = RE)) +
   geom_boxplot() +

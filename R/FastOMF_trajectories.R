@@ -319,7 +319,7 @@ lines(full_years, OM_25_35_rep$depletion * 100, col = "red", lty = 2, lwd = 2)
 lines(full_years, OM_25_20_rep$depletion * 100, col = "blue", lty = 2, lwd = 2)
 polygon(x = c(plot_year1,plot_year2,plot_year2,plot_year1), y = c(120, 120, -10, -10), density = 20)
 
-mtext(text = "Depletion (SSB/B0)",side = 2, outer = T, at = 0.5, line = -1, cex= 1.2)
+mtext(text = "OM depletion (SSB/B0)",side = 2, outer = T, at = 0.5, line = -1, cex= 1.2)
 mtext(text = "Years",side = 1, outer = T, at = 0.5, line = -1, cex= 1.2)
 dev.off()
 
@@ -459,6 +459,9 @@ ggplot(sum_df, aes(x = year, fill = rebuild, alpha = 0.3)) +
   geom_line(aes(y = `50%`), col = "black", linetype = "dashed", linewidth = 1.1) +
   facet_wrap(~init) +
   theme_bw() +
+  ylab("OM depletion with stochastic recruitment") +
   guides(alpha = "none")+
+  theme(axis.text = element_text(size = 12),
+        axis.title = element_text(size = 14)) +
   ylim(0,NA)
 ggsave(filename =  file.path(fig_dir, "OM_Depletion_with_uncertainty.png"), width = 10, height = 8)

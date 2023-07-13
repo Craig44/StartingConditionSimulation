@@ -310,13 +310,11 @@ Type objective_function<Type>::operator() () {
   Type init_age_dev_nll = 0.0;
   if(estimate_init_age_devs == 1) {
     for(age_ndx = 1; age_ndx < (n_ages - 1); ++age_ndx) {
-      if(age_ndx >= n_init_age_devs) {
-        N(age_ndx, 0) *= init_age_dev(n_init_age_devs - 1);
-      } else {
+      if(age_ndx < n_init_age_devs) {
         N(age_ndx, 0) *= init_age_dev(age_ndx - 1);
       }
     } 
-    for(age_ndx =0; age_ndx < ln_init_age_devs.size(); ++age_ndx)
+    for(age_ndx = 0; age_ndx < ln_init_age_devs.size(); ++age_ndx)
       init_age_dev_nll -= dnorm(ln_init_age_devs(age_ndx), -0.5 * sigma_init_age_devs * sigma_init_age_devs, sigma_init_age_devs, true);            
   }
   ssb(0) =  (N.col(0).vec() * exp(-init_Z * propZ_ssb(0))  * stockMeanWeight.col(0).vec() * propMat.col(0).vec()).sum();

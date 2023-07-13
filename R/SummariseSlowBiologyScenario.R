@@ -1,5 +1,5 @@
 #'
-#' MediumBiologyScenario
+#' Summarise SlowBiologyScenario
 #'
 #'
 
@@ -31,13 +31,13 @@ n_first_ycs_to_estimate_for_historic_models = 1; ## assume the first 10 year YCS
 initial_level = 100
 rebuild_level = 50
 #fig_dir = file.path(DIR$fig, paste0("MediumBiology_", initial_level, "_", rebuild_level))
-fig_dir = file.path(DIR$fig, "MediumBiology")
+fig_dir = file.path(DIR$fig, "SlowBiology")
 if(!dir.exists(fig_dir))
   dir.create(fig_dir)
 
-this_bio = readRDS(file = file.path(DIR$data, "Medium_biology.RDS"))
+this_bio = readRDS(file = file.path(DIR$data, "Slow_biology.RDS"))
 
-OM_label = "Medium_OM3"
+OM_label = "Slow_OM2"
 output_data = file.path(DIR$data, OM_label)
 if(!dir.exists(output_data))
   dir.create(output_data)
@@ -586,7 +586,7 @@ for(init_ndx in 1:length(inital_levels)) {
     OM_b0_df$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])
     OM_b0_df$model = "OM"
     OM_Bzero = rbind(OM_Bzero, OM_b0_df)
-                     
+    
     EM1_b0_df = get_multiple_Bzeros(mle_lst_EM1[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]])
     EM1_b0_df$init = paste0("init ", inital_levels[init_ndx])
     EM1_b0_df$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])
@@ -665,25 +665,10 @@ ggplot(full_Bzero) +
   ggtitle("B0") +
   labs(x ="", y = "Relative error in B0") +
   ylim(-70,70) +
-  theme(axis.text.x = element_text(angle = 90))
+  theme(axis.text.x = element_text(angle = 90),
+        strip.text = element_text(size = 14),
+        axis.title = element_text(size = 12))
 ggsave(filename = file.path(output_fig_dir, "B0_RE.png"), width =10, height = 8)
-## Nominal confidence coverage
-OM_bzero = OM_report$B0
-OM_CI_df = NULL
-for(init_ndx in 1:length(inital_levels)) {
-  for(rebuild_ndx in 1:length(rebuild_levels)) {
-    EM1_b0 = get_Bzero_coverage(mle_lst = se_lst_EM1[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], OM_val = OM_bzero)
-    EM1a_b0 = get_Bzero_coverage(mle_lst = se_lst_EM1a[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], OM_val = OM_bzero)
-    EM1b_b0 = get_Bzero_coverage(mle_lst = se_lst_EM1b[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], OM_val = OM_bzero)
-    EM2_b0 = get_Bzero_coverage(mle_lst = se_lst_EM2[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], OM_val = OM_bzero)
-    EM3_b0 = get_Bzero_coverage(mle_lst = se_lst_EM3[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], OM_val = OM_bzero)
-    tmp_df = data.frame(rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx]), init = paste0("init ", inital_levels[init_ndx]), model = c("EM1", "EM1a", "EM1b", "EM2", "EM3"), proportion = c(sum(EM1_b0)/length(EM1_b0), sum(EM1a_b0)/length(EM1a_b0), sum(EM1b_b0)/length(EM1b_b0), sum(EM2_b0)/length(EM2_b0), sum(EM3_b0)/length(EM3_b0)))
-    OM_CI_df = rbind(OM_CI_df, tmp_df)
-  }
-}
-
-Bzero_CI = OM_CI_df %>% pivot_wider(id_cols = c("rebuild", "init"), names_from = model, values_from = proportion)
-write.table(x = Bzero_CI, file = file.path(output_fig_dir, "Bzero_coverage_table.txt"), row.names = F, col.names = T, quote = F)
 
 ## Get a range of reference points
 full_survey_q = NULL
@@ -795,7 +780,7 @@ for(init_ndx in 1:length(inital_levels)) {
     EM1_dep_df$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])
     EM1_dep_df$model = "EM1"
     #EM1_dep_df$RE = (EM1_dep_df$values - OM_depletion_df$values) / OM_depletion_df$values * 100
-
+    
     ## EM1a
     EM1a_dep_df = get_multiple_vectors(mle_lst_EM1a[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], "depletion", element_labs = full_years)
     EM1a_dep_df$values = EM1a_dep_df$values * 100
@@ -950,24 +935,6 @@ ggplot(full_terminal_depletion %>% filter(names == max(full_years)), aes(x = mod
 
 ggsave(filename = file.path(output_fig_dir, "RE_terminal_year.png"), width =10, height = 8)
 
-## Nominal confidence coverage
-OM_CI_df = NULL
-for(init_ndx in 1:length(inital_levels)) {
-  for(rebuild_ndx in 1:length(rebuild_levels)) {
-    OM_depletion = get_multiple_vectors(OM_rep_lst[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], "depletion", element_labs = full_years)
-    OM_depletion = OM_depletion %>% filter(names == 2020)
-    EM1_b0 = get_terminal_depletion_coverage(mle_lst = se_lst_EM1[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], OM_val = OM_depletion)
-    EM1a_b0 = get_terminal_depletion_coverage(mle_lst = se_lst_EM1a[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], OM_val = OM_depletion)
-    EM1b_b0 = get_terminal_depletion_coverage(mle_lst = se_lst_EM1b[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], OM_val = OM_depletion)
-    EM2_b0 = get_terminal_depletion_coverage(mle_lst = se_lst_EM2[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], OM_val = OM_depletion)
-    EM3_b0 = get_terminal_depletion_coverage(mle_lst = se_lst_EM3[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], OM_val = OM_depletion)
-    tmp_df = data.frame(rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx]), init = paste0("init ", inital_levels[init_ndx]), model = c("EM1", "EM1a", "EM1b", "EM2", "EM3"), proportion = c(sum(EM1_b0)/length(EM1_b0), sum(EM1a_b0)/length(EM1a_b0), sum(EM1b_b0)/length(EM1b_b0), sum(EM2_b0)/length(EM2_b0), sum(EM3_b0)/length(EM3_b0)), n = c(length(EM1_b0), length(EM1a_b0),length(EM1b_b0), length(EM2_b0), length(EM3_b0)))
-    OM_CI_df = rbind(OM_CI_df, tmp_df)
-  }
-}
-
-Terminal_Depletion_CI = OM_CI_df %>% pivot_wider(id_cols = c("rebuild", "init"), names_from = model, values_from = proportion)
-write.table(x = Bzero_CI, file = file.path(output_fig_dir, "Bzero_coverage_table.txt"), row.names = F, col.names = T, quote = F)
 
 ## Get a range of reference points
 full_ssb = NULL
@@ -1480,13 +1447,13 @@ for(init_ndx in 1:length(inital_levels)) {
     EM1a_nage_df$init = paste0("init ", inital_levels[init_ndx])
     EM1a_nage_df$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])
     EM1a_nage_df$model = "EM1a"
-
+    
     ## EM1b
     EM1b_nage_df = get_numbers_at_age(mle_lst_EM1b[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], year_ndx = c(1,short_ndx,length(full_years), ndx_00), year_label = c(full_years[1], init_short_year, full_years[length(full_years)],year_00))
     EM1b_nage_df$init = paste0("init ", inital_levels[init_ndx])
     EM1b_nage_df$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])
     EM1b_nage_df$model = "EM1b"
-
+    
     ## EM2
     EM2_nage_df = get_numbers_at_age(mle_lst_EM2[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], year_ndx = c(1,short_00_ndx, length(data_years_00)), year_label = c(data_years_00[1], short_00_year, year_00))
     EM2_nage_df$init = paste0("init ", inital_levels[init_ndx])
@@ -1497,25 +1464,25 @@ for(init_ndx in 1:length(inital_levels)) {
     EM3_nage_df$init = paste0("init ", inital_levels[init_ndx])
     EM3_nage_df$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])
     EM3_nage_df$model = "EM3"
-
+    
     ## EM1
     EM1_00_nage_df = get_numbers_at_age(mle_lst_EM1_00[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], year_ndx = c(1,length(data_hist_years_00), hist_shrt_ndx), year_label = c(data_hist_years_00[1], data_hist_years_00[length(data_hist_years_00)],hist_shrt_yr))
     EM1_00_nage_df$init = paste0("init ", inital_levels[init_ndx])
     EM1_00_nage_df$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])
     EM1_00_nage_df$model = "EM1_00"
-
+    
     ## EM1a
     EM1a_00_nage_df = get_numbers_at_age(mle_lst_EM1a_00[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], year_ndx = c(1,length(data_hist_years_00), hist_shrt_ndx), year_label = c(data_hist_years_00[1], data_hist_years_00[length(data_hist_years_00)],hist_shrt_yr))
     EM1a_00_nage_df$init = paste0("init ", inital_levels[init_ndx])
     EM1a_00_nage_df$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])
     EM1a_00_nage_df$model = "EM1a_00"
-
+    
     ## EM1b
     EM1b_00_nage_df = get_numbers_at_age(mle_lst_EM1b_00[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], year_ndx = c(1,length(data_hist_years_00), hist_shrt_ndx), year_label = c(data_hist_years_00[1], data_hist_years_00[length(data_hist_years_00)],hist_shrt_yr))
     EM1b_00_nage_df$init = paste0("init ", inital_levels[init_ndx])
     EM1b_00_nage_df$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])
     EM1b_00_nage_df$model = "EM1b_00"
-
+    
     ## EM2
     EM2_00_nage_df = get_numbers_at_age(mle_lst_EM2_00[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], year_ndx = c(1,length(data_years_00)), year_label = c(data_years_00[1], data_years_00[length(data_years_00)]))
     EM2_00_nage_df$init = paste0("init ", inital_levels[init_ndx])
@@ -1526,7 +1493,7 @@ for(init_ndx in 1:length(inital_levels)) {
     EM3_00_nage_df$init = paste0("init ", inital_levels[init_ndx])
     EM3_00_nage_df$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])
     EM3_00_nage_df$model = "EM3_00"
-
+    
     full_nage = rbind(full_nage, EM1_nage_df, EM1a_nage_df, EM1b_nage_df, EM2_nage_df, EM3_nage_df,EM1_00_nage_df, EM1a_00_nage_df, EM1b_00_nage_df, EM2_00_nage_df, EM3_00_nage_df)
   }
 }
@@ -1835,7 +1802,7 @@ for(init_ndx in 1:length(inital_levels)) {
     EM1_surveyAF_df$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])
     EM1_surveyAF_df$model = "EM1"
     #EM1_surveyAF_df$RE = (EM1_surveyAF_df$Ey - OM_AF_df$Ey) / OM_AF_df$Ey * 100
-
+    
     EM1a_surveyAF_df = get_multiple_mean_age(mle_lst_EM1a[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], survey = T, element_labs = survey_year_obs)
     EM1a_surveyAF_df$init = paste0("init ", inital_levels[init_ndx])
     EM1a_surveyAF_df$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])

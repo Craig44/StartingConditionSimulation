@@ -1,10 +1,8 @@
 #'
-#' Run a profile for B0 and F-init for EM2 model
+#' Run a profile for B0 and F-init for EM3 model
 #' for the medium biology scenario to provide
 #' insight into what data is informing these parameters
 #'
-
-
 source("AuxillaryFunctions.R")
 library(dplyr)
 library(ggplot2)
@@ -144,7 +142,7 @@ OM_pars = list(
 )
 
 # these parameters we are not estimating.
-na_map = fix_pars(par_list = OM_pars, pars_to_exclude = c("ln_catch_sd", "ln_sigma_r", "ln_F_init", "ln_init_age_devs", "ln_sigma_init_age_devs"))
+na_map = fix_pars(par_list = OM_pars, pars_to_exclude = c("ln_catch_sd", "ln_sigma_r", "ln_F_init", "ln_sigma_init_age_devs"))
 OM_obj <- MakeADFun(TMB_data, OM_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
 
 OM_report = OM_obj$report()
@@ -233,8 +231,8 @@ OM_short$fn()
 ## ----> rebuild 
 ## ------> Simulations
 SSB_df = recruit_df = depletion_df = NULL
-inital_levels = c(25, 100)# c(25, 50, 75, 100)
-rebuild_levels = c(20, 50) # c(20, 35, 50)
+inital_levels = c(25, 50, 75, 100)
+rebuild_levels =  c(20, 35, 50)
 EM2_data = EM_short_data
 EM2_data$estimate_F_init = 1
 ## sort out parameters
@@ -437,13 +435,15 @@ full_nll$init = factor(full_nll$init, levels = paste0("init ", inital_levels), o
 full_nll = full_nll %>% group_by(observation, init, rebuild) %>% mutate(stand_value = value - min(value))
 ggplot(full_nll, aes(x = F_init, y = stand_value, col = observation, linetype = observation)) +
   geom_line(linewidth = 1.1) +
-  facet_grid(init~rebuild) +
+  facet_grid(rebuild~init) +
   ylab("Negative log-likelihood") +
-  ylab("F-init") +
+  xlab("F-init") +
   theme_bw() +
-  ylim(0,1000) #+
+  ylim(0,1000) +
+  theme(strip.text = element_text(size = 14),
+        axis.title = element_text(size = 12))
   #geom_vline(xintercept = OM_report$F_init, linewidth = 1.1, linetype = "dashed", col = "red") 
-ggsave(filename = file.path(output_fig_dir, "Finit_likelihood.png"), width =10, height = 8)
+ggsave(filename = file.path(output_fig_dir, "Finit_likelihood_EM3.png"), width =10, height = 8)
 
 ## summarise log-likelihood fits
 ## for the F-init parameter
@@ -510,16 +510,19 @@ ggplot(r0_finit, aes(x = R0, y = value)) +
 full_R0_nll = rbind(R0_joint_nll, R0_recruit_nll,R0_catch_nll,R0_s_ndx_nll, R0_s_AF_nll, R0_F_AF_nll)
 full_R0_nll$init = factor(full_R0_nll$init, levels = paste0("init ", inital_levels), ordered =T)
 full_R0_nll = full_R0_nll %>% group_by(observation, init, rebuild) %>% mutate(stand_value = value - min(value))
-ggplot(full_R0_nll, aes(x = R0, y = stand_value, col = observation, linetype = observation)) +
+ggplot(full_R0_nll, aes(x = R0/1000, y = stand_value, col = observation, linetype = observation)) +
   geom_line(linewidth = 1.1) +
-  facet_grid(init~rebuild) +
+  facet_grid(rebuild~init) +
   theme_bw() +
   ylab("Negative log-likelihood") +
   geom_vline(xintercept = OM_report$R0, linewidth = 1.1, linetype = "dashed", col = "red") +
   ylim(0,200) +
-  xlab("R0") +
-  xlim(1e6, 3e6)
-ggsave(filename = file.path(output_fig_dir, "R0_likelihood.png"), width =10, height = 8)
+  xlab("R0 (000's)") +
+  xlim(1e6/1000, 3e6/1000) +
+  theme(strip.text = element_text(size = 14),
+        axis.title = element_text(size = 12)) +
+  geom_vline(xintercept = OM_sim$R0/1000, linewidth = 1.1, linetype = "dashed")
+ggsave(filename = file.path(output_fig_dir, "R0_likelihood_EM3.png"), width =10, height = 8)
 
 
 ## do a joint contour plot with R0 and F_init

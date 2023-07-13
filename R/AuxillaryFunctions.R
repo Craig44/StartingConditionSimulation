@@ -758,3 +758,29 @@ get_age_fit_by_year <- function(mle_lst, element_labs, survey = T, years = 1960)
   }
   return(full_df)
 }
+
+get_Bzero_coverage <- function(mle_lst, OM_val) {
+  value_is_in = vector();
+  for(i in 1:length(mle_lst)) {
+    sum_ = summary(mle_lst[[i]])
+    LCI = sum_["B0","Estimate"] - 2 * sum_["B0","Std. Error"]
+    UCI = sum_["B0","Estimate"] + 2 * sum_["B0","Std. Error"]
+    #cat("i = ", i, " UCI = ", UCI, " LCI ", LCI, "\n")
+    if(!is.na(sum_["B0","Std. Error"]))
+      value_is_in = c(value_is_in, OM_val > LCI & OM_val < UCI)
+  }
+  return(value_is_in)
+}
+
+get_terminal_depletion_coverage <- function(mle_lst, OM_val) {
+  value_is_in = vector();
+  for(i in 1:length(mle_lst)) {
+    sum_ = summary(mle_lst[[i]])
+    LCI = sum_[rownames(sum_) %in% "depletion","Estimate"] - 2 * sum_[rownames(sum_) %in% "depletion","Std. Error"]
+    UCI = sum_[rownames(sum_) %in% "depletion","Estimate"] + 2 * sum_[rownames(sum_) %in% "depletion","Std. Error"]
+    #cat("i = ", i, " UCI = ", UCI, " LCI ", LCI, "\n")
+    if(!is.na(tail(LCI, n = 1)))
+      value_is_in = c(value_is_in, OM_val$values[OM_val$sim_iter == i] > tail(LCI, n = 1) & OM_val$values[OM_val$sim_iter == i] < tail(UCI, n = 1))
+  }
+  return(value_is_in)
+}
