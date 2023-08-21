@@ -28,7 +28,7 @@ for (a in 1:(nages-1)) {
   N.pr0[a+1]=N.pr0[a]*exp(-this_bio$M)
 }
 N.pr0[nages]=N.pr0[nages]/(1-exp(-this_bio$M))  #Plus group
-Phi.0=sum(N.pr0*maturity*mean_weight)     #Spawners per recruit based on mature female biomass
+Phi.0=sum(N.pr0*biol_df$maturity*biol_df$weight_at_age)     #Spawners per recruit based on mature female biomass
 
 
 #' based on equation E3.2 from Bai Li et. al 2021 paper
@@ -61,10 +61,61 @@ R_eq <- function(R0, h, phi_0, phi_F) {
 
 #Initial conditions assumes equilibrium age structure given initial F
 N.pr1=rep(1,nages) #Number of spawners per recruit at age
-Z=0.2*biol_df$fishery_selectivity+this_bio$M
+F_init = 0.2
+Z=F_init*biol_df$fishery_selectivity+this_bio$M
+
 for (a in 1:(nages-1))
 {N.pr1[a+1]=N.pr1[a]*exp(-Z[a])}
 N.pr1[nages]=N.pr1[nages]/(1-exp(-Z[nages])) #Plus group
-Phi.F=sum(N.pr1*maturity*mean_weight) #Spawners per recruit based on mature female biomass
+Phi.F=sum(N.pr1*biol_df$maturity*biol_df$weight_at_age) #Spawners per recruit based on mature female biomass
 ## intial age-structure
 R_eq(this_bio$R0, this_bio$h, Phi_0, phi_0.2)*N.pr1
+
+
+
+## Pass the OM generated data to the TMB model
+#sink(file = "compile_output.txt")
+compile(file = file.path(DIR$tmb, "test.cpp"), flags = "-Wignored-attributes -O3")
+#dyn.unload(dynlib(file.path(DIR$tmb, "test")))
+dyn.load(dynlib(file.path(DIR$tmb, "test")))
+
+data = list()
+data$years = 1:10
+data$ages = biol_df$age
+data$propMat = matrix(biol_df$maturity, ncol = 1)
+data$mean_weight_at_age = matrix(biol_df$weight_at_age, ncol = 1)
+data$propZ_ssb = rep(0.5, length(data$years))
+data$natMor = this_bio$M
+data$steepness = this_bio$h
+data$mean_weight_a = this_bio$a
+data$mean_weight_b = this_bio$b
+data$R0 = this_bio$R0
+data$f_a50 = this_bio$f_a50
+data$f_ato95 = this_bio$f_ato95
+data$F_init = F_init
+pars = list()
+pars$dummy_variable = 0.0
+tmp <- MakeADFun(data, pars, DLL= "test", checkParameterOrder = T)
+report = tmp$report()
+
+report$SPR_0
+report$SPR_0_alt
+report$SPR_0_alt2
+report$SPR_Finit
+report$SPR_Finit_alt
+report$SPR_finit_alt2
+phi_0.2
+
+N.pr1
+report$Na_F
+report$Za
+Z
+report$fishery_selectivity
+biol_df$fishery_selectivity
+
+R_eq(this_bio$R0, this_bio$h, Phi_0, phi_0.2)
+R_eq(this_bio$R0, this_bio$h, report$SPR_0_alt, report$SPR_Finit_alt)
+R_eq(this_bio$R0, this_bio$h, report$SPR_0_alt2, report$SPR_finit_alt2)
+R_eq(this_bio$R0, this_bio$h, report$SPR_0, report$SPR_Finit)
+
+

@@ -16,10 +16,10 @@ library(purrr)
 
 ## Pass the OM generated data to the TMB model
 #sink(file = "compile_output.txt")
-compile(file = file.path(DIR$tmb, "AgeStructuredModel.cpp"), flags = "-Wignored-attributes -O3")
+compile(file = file.path(DIR$tmb, "AgeStructuredModel_tmp.cpp"), flags = "-Wignored-attributes -O3")
 #sink()
-#dyn.unload(dynlib(file.path(DIR$tmb, "AgeStructuredModel")))
-dyn.load(dynlib(file.path(DIR$tmb, "AgeStructuredModel")))
+#dyn.unload(dynlib(file.path(DIR$tmb, "AgeStructuredModel_tmp")))
+dyn.load(dynlib(file.path(DIR$tmb, "AgeStructuredModel_tmp")))
 #setwd(DIR$R)
 
 n_last_ycs_to_estimate = 1;
@@ -37,7 +37,7 @@ if(!dir.exists(fig_dir))
 
 this_bio = readRDS(file = file.path(DIR$data, "Medium_biology.RDS"))
 
-OM_label = "Medium_OM3"
+OM_label = "Medium_OM5"
 output_data = file.path(DIR$data, OM_label)
 if(!dir.exists(output_data))
   dir.create(output_data)
@@ -146,7 +146,7 @@ OM_pars = list(
 
 # these parameters we are not estimating.
 na_map = fix_pars(par_list = OM_pars, pars_to_exclude = c("ln_catch_sd", "ln_sigma_r", "ln_F_init", "ln_init_age_devs", "ln_sigma_init_age_devs"))
-OM_obj <- MakeADFun(TMB_data, OM_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
+OM_obj <- MakeADFun(TMB_data, OM_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
 
 OM_report = OM_obj$report()
 OM_report$F30_nll
@@ -303,13 +303,13 @@ EM_pars$ln_ycs_est = rep(0, sum(EM1_data$ycs_estimated))
 n_first_ycs_to_estimate_for_historic_models
 
 ## test
-OM_short<- MakeADFun(EM_short_data, EM_short_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
+OM_short<- MakeADFun(EM_short_data, EM_short_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
 OM_short$fn()
 ## Data only until 00
-OM_short<- MakeADFun(EM_short_data_00, EM_short_00_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
+OM_short<- MakeADFun(EM_short_data_00, EM_short_00_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
 OM_short$fn()
 ## Data only until 00
-OM_short<- MakeADFun(EM_hist_data_00, EM_hist_00_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
+OM_short<- MakeADFun(EM_hist_data_00, EM_hist_00_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
 OM_short$fn()
 
 ## OM simulations
@@ -318,8 +318,8 @@ OM_short$fn()
 ## ------> Simulations
 n_sims = 100
 SSB_df = recruit_df = depletion_df = NULL
-inital_levels = c(25, 100)# c(25, 50, 75, 100)
-rebuild_levels = c(20, 50) # c(20, 35, 50)
+inital_levels =c(25, 50, 75, 100)
+rebuild_levels =  c(20, 35, 50)
 EM1a_data = EM1b_data = EM1_data
 EM2_data = EM3_data = EM_short_data
 EM2_data_00 = EM3_data_00 = EM_short_data_00
@@ -343,16 +343,16 @@ na_EM1_pars_00 = fix_pars(EM_hist_00_pars, pars_to_exclude =  c("ln_sigma_r",  "
 na_EM1a_pars_00 = fix_pars(EM_hist_00_pars, pars_to_exclude = c("ln_sigma_r",  "ln_F_init", "ln_init_age_devs","ln_sigma_init_age_devs", "ln_F", "ln_catch_sd", "ln_Fmax", "ln_F40", "ln_F35", "ln_F30", "ln_Fmsy", "ln_F_0_1"))
 na_EM1b_pars_00 = fix_pars(EM_hist_00_pars, pars_to_exclude = c("ln_sigma_r",  "ln_F_init", "ln_init_age_devs","ln_sigma_init_age_devs", "ln_F", "ln_catch_sd", "ln_Fmax", "ln_F40", "ln_F35", "ln_F30", "ln_Fmsy", "ln_F_0_1"))
 ## test these pars
-test <- MakeADFun(EM2_data, EM_short_pars, map = na_EM2_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
-test <- MakeADFun(EM3_data, EM_short_pars, map = na_EM3_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
-test <- MakeADFun(EM2_data_00, EM_short_00_pars, map = na_EM2_pars_00, DLL= "AgeStructuredModel", checkParameterOrder = T)
-test <- MakeADFun(EM3_data_00, EM_short_00_pars, map = na_EM3_pars_00, DLL= "AgeStructuredModel", checkParameterOrder = T)
-test <- MakeADFun(EM1_data, EM_pars, map = na_EM1_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
-test <- MakeADFun(EM1a_data, EM_pars, map = na_EM1a_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
-test <- MakeADFun(EM1b_data, EM_pars, map = na_EM1b_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
-test <- MakeADFun(EM1_data_00, EM_hist_00_pars, map = na_EM1_pars_00, DLL= "AgeStructuredModel", checkParameterOrder = T)
-test <- MakeADFun(EM1a_data_00, EM_hist_00_pars, map = na_EM1a_pars_00, DLL= "AgeStructuredModel", checkParameterOrder = T)
-test <- MakeADFun(EM1b_data_00, EM_hist_00_pars, map = na_EM1b_pars_00, DLL= "AgeStructuredModel", checkParameterOrder = T)
+test <- MakeADFun(EM2_data, EM_short_pars, map = na_EM2_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
+test <- MakeADFun(EM3_data, EM_short_pars, map = na_EM3_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
+test <- MakeADFun(EM2_data_00, EM_short_00_pars, map = na_EM2_pars_00, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
+test <- MakeADFun(EM3_data_00, EM_short_00_pars, map = na_EM3_pars_00, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
+test <- MakeADFun(EM1_data, EM_pars, map = na_EM1_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
+test <- MakeADFun(EM1a_data, EM_pars, map = na_EM1a_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
+test <- MakeADFun(EM1b_data, EM_pars, map = na_EM1b_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
+test <- MakeADFun(EM1_data_00, EM_hist_00_pars, map = na_EM1_pars_00, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
+test <- MakeADFun(EM1a_data_00, EM_hist_00_pars, map = na_EM1a_pars_00, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
+test <- MakeADFun(EM1b_data_00, EM_hist_00_pars, map = na_EM1b_pars_00, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
 
 under_over_reporting_fraction = 0.25 ## 25%
 EM_short_pars$ln_F_init = log(0.07)
@@ -375,6 +375,13 @@ mle_lst_EM2_00 = readRDS(file = file.path(output_data, "mle_lst_EM2_00.RDS"))
 mle_lst_EM3_00 = readRDS(file = file.path(output_data, "mle_lst_EM3_00.RDS"))
 OM_sim_lst = readRDS(file = file.path(output_data, "OM_sim_lst.RDS"))
 OM_rep_lst = readRDS(file = file.path(output_data, "OM_rep_lst.RDS"))
+
+## read in Standard errors
+se_lst_EM1 = readRDS(file = file.path(output_data, "se_lst_EM1.RDS"))
+se_lst_EM1a = readRDS(file = file.path(output_data, "se_lst_EM1a.RDS"))
+se_lst_EM1b = readRDS(file = file.path(output_data, "se_lst_EM1b.RDS"))
+se_lst_EM2 = readRDS(file = file.path(output_data, "se_lst_EM2.RDS"))
+se_lst_EM3 = readRDS(file = file.path(output_data, "se_lst_EM3.RDS"))
 
 ## summarise convergence
 EM1_convergence = readRDS(file = file.path(output_data, "convergence_EM1.RDS"))
@@ -684,6 +691,7 @@ for(init_ndx in 1:length(inital_levels)) {
 
 Bzero_CI = OM_CI_df %>% pivot_wider(id_cols = c("rebuild", "init"), names_from = model, values_from = proportion)
 write.table(x = Bzero_CI, file = file.path(output_fig_dir, "Bzero_coverage_table.txt"), row.names = F, col.names = T, quote = F)
+Bzero_CI
 
 ## Get a range of reference points
 full_survey_q = NULL
@@ -1538,13 +1546,12 @@ full_nage$init = factor(full_nage$init, levels = paste0("init ", inital_levels),
 ## plot the relative error
 
 ## plot the relative error
-ggplot(full_nage %>% filter(model.x == "EM1", year == full_years[1]), aes(x = Age, group = Age, y = RE)) +
-  geom_boxplot() +
-  geom_hline(yintercept = 0, linetype = "dashed", col = "red") +
+ggplot(full_nage %>% filter(model.x == "EM3", year == year_00, sim_iter == 1), aes(x = Age)) +
+  geom_line(aes(y = nage.x, col = "EM3"), linewidth = 1.1) +
+  geom_line(aes(y = nage.y, col = "OM"), linewidth = 1.1) +
   theme_bw() +
-  ggtitle("EM1") +
-  ylim(-50, 50) +
-  facet_grid(init~rebuild) 
+  ggtitle("EM3") +
+  facet_grid(rebuild ~ init) 
 
 ggplot(full_nage %>% filter(model.x == "EM2", year == data_years_00[1]), aes(x = Age, group = Age, y = RE)) +
   geom_boxplot() +
@@ -1561,6 +1568,53 @@ ggplot(full_nage %>% filter(model.x == "EM3", year == data_years_00[1]), aes(x =
   ggtitle("EM3") +
   ylim(-50, 50) +
   facet_grid(init~rebuild) 
+
+ggplot(full_nage %>% filter(model.x %in% c("EM3", "OM"), year == data_years[1], sim_iter == 1), aes(x = Age, group = Age, y = RE)) +
+  geom_line(linewidth = 1.1, aes(col = model.x)) +
+  geom_hline(yintercept = 0, linetype = "dashed", col = "red") +
+  theme_bw() +
+  ggtitle("EM3") +
+  #ylim(-50, 50) +
+  facet_grid(init~rebuild) 
+
+## Get a range of reference points
+full_finit = NULL
+full_OM_finit = NULL
+for(init_ndx in 1:length(inital_levels)) {
+  for(rebuild_ndx in 1:length(rebuild_levels)) {
+  
+    EM2_finit_df = get_multiple_scalar_vals(mle_lst_EM2[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], "survey_finit")
+    EM2_finit_df$init = paste0("init ", inital_levels[init_ndx])
+    EM2_finit_df$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])
+    EM2_finit_df$model = "EM2"
+    #EM2_finit_df$RE = (EM2_finit_df$value - OM_finit_df$value) / OM_finit_df$value * 100
+    
+    EM3_finit_df = get_multiple_scalar_vals(mle_lst_EM3[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], "survey_finit")
+    EM3_finit_df$init = paste0("init ", inital_levels[init_ndx])
+    EM3_finit_df$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])
+    EM3_finit_df$model = "EM3"
+    #EM3_finit_df$RE = (EM3_finit_df$value  - OM_finit_df$value) / OM_finit_df$value * 100
+    
+    EM2_00_finit_df = get_multiple_scalar_vals(mle_lst_EM2_00[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], "survey_finit")
+    EM2_00_finit_df$init = paste0("init ", inital_levels[init_ndx])
+    EM2_00_finit_df$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])
+    EM2_00_finit_df$model = "EM2_00"
+    #EM2_00_finit_df$RE = (EM2_00_finit_df$value - OM_finit_df$value) / OM_finit_df$value * 100
+    
+    EM3_00_finit_df = get_multiple_scalar_vals(mle_lst_EM3_00[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]], "survey_finit")
+    EM3_00_finit_df$init = paste0("init ", inital_levels[init_ndx])
+    EM3_00_finit_df$rebuild = paste0("rebuild ", rebuild_levels[rebuild_ndx])
+    EM3_00_finit_df$model = "EM3_00"
+    #EM3_00_finit_df$RE = (EM3_00_finit_df$value - OM_finit_df$value) / OM_finit_df$value * 100
+    
+    full_finit = rbind(full_finit, EM2_finit_df, EM3_finit_df, EM2_00_finit_df, EM3_00_finit_df)
+  }
+}
+full_survey_q = full_survey_q %>% left_join(full_OM_q, by = c("sim_iter", "init", "rebuild"))
+full_survey_q$init = factor(full_survey_q$init, levels = paste0("init ", inital_levels), ordered =T)
+## calculate RE
+full_survey_q = full_survey_q %>% group_by(sim_iter, init, rebuild, model.x) %>% mutate(RE = (value.x - value.y)/ value.y * 100)
+
 ## look at fits to observations
 ## Get a range of reference points
 full_index = NULL

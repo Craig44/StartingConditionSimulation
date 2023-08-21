@@ -13,14 +13,14 @@ library(purrr)
 
 ## Pass the OM generated data to the TMB model
 #sink(file = "compile_output.txt")
-compile(file = file.path(DIR$tmb, "AgeStructuredModel.cpp"), flags = "-Wignored-attributes -O3")
+compile(file = file.path(DIR$tmb, "AgeStructuredModel_tmp.cpp"), flags = "-Wignored-attributes -O3")
 #sink()
-#dyn.unload(dynlib(file.path(DIR$tmb, "AgeStructuredModel")))
-dyn.load(dynlib(file.path(DIR$tmb, "AgeStructuredModel")))
+#dyn.unload(dynlib(file.path(DIR$tmb, "AgeStructuredModel_tmp")))
+dyn.load(dynlib(file.path(DIR$tmb, "AgeStructuredModel_tmp")))
 #setwd(DIR$R)
 include_SE = T
 N_eff = 150
-OM_label = "Medium_OM4"
+OM_label = "Medium_OM5"
 output_data = file.path(DIR$data, OM_label)
 if(!dir.exists(output_data))
   dir.create(output_data)
@@ -105,7 +105,7 @@ TMB_data$mean_weight_a = this_bio$a
 TMB_data$mean_weight_b = this_bio$b
 TMB_data$estimate_F_init = 0
 TMB_data$estimate_init_age_devs = 0
-TMB_data$n_init_age_devs = max(TMB_data$ages)
+TMB_data$n_init_age_devs = max(TMB_data$ages) - 2
 
 TMB_data$rec_devs_sum_to_zero = 0
 TMB_data$Q_r_for_sum_to_zero = Q_sum_to_zero_QR(length(TMB_data$years))
@@ -141,7 +141,7 @@ OM_pars = list(
 
 # these parameters we are not estimating.
 na_map = fix_pars(par_list = OM_pars, pars_to_exclude = c("ln_catch_sd", "ln_sigma_r", "ln_F_init", "ln_init_age_devs", "ln_sigma_init_age_devs"))
-OM_obj <- MakeADFun(TMB_data, OM_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
+OM_obj <- MakeADFun(TMB_data, OM_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
 
 OM_report = OM_obj$report()
 OM_report$F30_nll
@@ -291,13 +291,13 @@ EM_pars$ln_ycs_est = rep(0, sum(EM1_data$ycs_estimated))
 n_first_ycs_to_estimate_for_historic_models
 
 ## test
-OM_short<- MakeADFun(EM_short_data, EM_short_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
+OM_short<- MakeADFun(EM_short_data, EM_short_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
 OM_short$fn()
 ## Data only until 00
-OM_short<- MakeADFun(EM_short_data_00, EM_short_00_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
+OM_short<- MakeADFun(EM_short_data_00, EM_short_00_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
 OM_short$fn()
 ## Data only until 00
-OM_short<- MakeADFun(EM_hist_data_00, EM_hist_00_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
+OM_short<- MakeADFun(EM_hist_data_00, EM_hist_00_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
 OM_short$fn()
 
 ## OM simulations
@@ -331,16 +331,16 @@ na_EM1_pars_00 = fix_pars(EM_hist_00_pars, pars_to_exclude =  c("ln_sigma_r",  "
 na_EM1a_pars_00 = fix_pars(EM_hist_00_pars, pars_to_exclude = c("ln_sigma_r",  "ln_F_init", "ln_init_age_devs","ln_sigma_init_age_devs", "ln_F", "ln_catch_sd", "ln_Fmax", "ln_F40", "ln_F35", "ln_F30", "ln_Fmsy", "ln_F_0_1"))
 na_EM1b_pars_00 = fix_pars(EM_hist_00_pars, pars_to_exclude = c("ln_sigma_r",  "ln_F_init", "ln_init_age_devs","ln_sigma_init_age_devs", "ln_F", "ln_catch_sd", "ln_Fmax", "ln_F40", "ln_F35", "ln_F30", "ln_Fmsy", "ln_F_0_1"))
 ## test these pars
-test <- MakeADFun(EM2_data, EM_short_pars, map = na_EM2_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
-test <- MakeADFun(EM3_data, EM_short_pars, map = na_EM3_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
-test <- MakeADFun(EM2_data_00, EM_short_00_pars, map = na_EM2_pars_00, DLL= "AgeStructuredModel", checkParameterOrder = T)
-test <- MakeADFun(EM3_data_00, EM_short_00_pars, map = na_EM3_pars_00, DLL= "AgeStructuredModel", checkParameterOrder = T)
-test <- MakeADFun(EM1_data, EM_pars, map = na_EM1_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
-test <- MakeADFun(EM1a_data, EM_pars, map = na_EM1a_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
-test <- MakeADFun(EM1b_data, EM_pars, map = na_EM1b_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
-test <- MakeADFun(EM1_data_00, EM_hist_00_pars, map = na_EM1_pars_00, DLL= "AgeStructuredModel", checkParameterOrder = T)
-test <- MakeADFun(EM1a_data_00, EM_hist_00_pars, map = na_EM1a_pars_00, DLL= "AgeStructuredModel", checkParameterOrder = T)
-test <- MakeADFun(EM1b_data_00, EM_hist_00_pars, map = na_EM1b_pars_00, DLL= "AgeStructuredModel", checkParameterOrder = T)
+test <- MakeADFun(EM2_data, EM_short_pars, map = na_EM2_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
+test <- MakeADFun(EM3_data, EM_short_pars, map = na_EM3_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
+test <- MakeADFun(EM2_data_00, EM_short_00_pars, map = na_EM2_pars_00, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
+test <- MakeADFun(EM3_data_00, EM_short_00_pars, map = na_EM3_pars_00, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
+test <- MakeADFun(EM1_data, EM_pars, map = na_EM1_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
+test <- MakeADFun(EM1a_data, EM_pars, map = na_EM1a_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
+test <- MakeADFun(EM1b_data, EM_pars, map = na_EM1b_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
+test <- MakeADFun(EM1_data_00, EM_hist_00_pars, map = na_EM1_pars_00, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
+test <- MakeADFun(EM1a_data_00, EM_hist_00_pars, map = na_EM1a_pars_00, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
+test <- MakeADFun(EM1b_data_00, EM_hist_00_pars, map = na_EM1b_pars_00, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
 
 EM1_convergence = EM1a_convergence = EM1b_convergence = EM1_00_convergence = EM1a_00_convergence = EM1b_00_convergence = 
   EM2_convergence = EM3_convergence = EM2_00_convergence = EM3_00_convergence = array(T, dim = c(length(inital_levels), length(rebuild_levels), n_sims))
@@ -389,7 +389,7 @@ for(init_ndx in 1:length(inital_levels)) {
       ## simulate YCS parameters
       OM_pars$ln_ycs_est = rnorm(sum(TMB_data$ycs_estimated), -0.5 * exp(OM_pars$ln_sigma_r) * exp(OM_pars$ln_sigma_r), exp(OM_pars$ln_sigma_r))
       ## Build OM and simulate parameters
-      OM_obj <- MakeADFun(TMB_data, OM_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
+      OM_obj <- MakeADFun(TMB_data, OM_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
       OM_sim <- OM_obj$simulate(complete = T)
       OM_sim_lst[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]][[as.character(sim_iter)]] = OM_sim
       ## Set catch for EM's
@@ -422,21 +422,21 @@ for(init_ndx in 1:length(inital_levels)) {
       EM1_data_00$survey_AF_obs = EM1a_data_00$survey_AF_obs = EM1b_data_00$survey_AF_obs = OM_sim$survey_AF_obs[,survey_year_obs %in% survey_year_obs_hist_00]
       EM1_data_00$fishery_AF_obs = EM1a_data_00$fishery_AF_obs = EM1b_data_00$fishery_AF_obs = array(OM_sim$fishery_AF_obs[,fishery_year_obs %in% fishery_year_obs_hist_00,], dim = c(dim(OM_sim$fishery_AF_obs)[1],sum(fishery_year_ndx_hist_00), OM_sim$n_fisheries))
       ## estimation
-      EM2_obj <- MakeADFun(EM2_data, EM_short_pars, map = na_EM2_pars, DLL= "AgeStructuredModel", checkParameterOrder = T, silent = T)
+      EM2_obj <- MakeADFun(EM2_data, EM_short_pars, map = na_EM2_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T, silent = T)
       #SpatialSablefishAssessment::check_gradients(EM2_obj)
-      EM3_obj <- MakeADFun(EM3_data, EM_short_pars, map = na_EM3_pars, DLL= "AgeStructuredModel", checkParameterOrder = T, silent = T)
+      EM3_obj <- MakeADFun(EM3_data, EM_short_pars, map = na_EM3_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T, silent = T)
       #SpatialSablefishAssessment::check_gradients(EM3_obj)
-      OM_tmp_obj <- MakeADFun(OM_sim, OM_pars, DLL= "AgeStructuredModel", checkParameterOrder = T, silent = T)
+      OM_tmp_obj <- MakeADFun(OM_sim, OM_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T, silent = T)
       OM_tmp_rep = OM_tmp_obj$report()
       OM_rep_lst[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]][[as.character(sim_iter)]] = OM_tmp_rep
-      EM2_00_obj <- MakeADFun(EM2_data_00, EM_short_00_pars, map = na_EM2_pars_00, DLL= "AgeStructuredModel", checkParameterOrder = T, silent = T)
-      EM3_00_obj <- MakeADFun(EM3_data_00, EM_short_00_pars, map = na_EM3_pars_00, DLL= "AgeStructuredModel", checkParameterOrder = T, silent = T)
-      EM1_obj <- MakeADFun(EM1_data, EM_pars, map = na_EM1_pars, DLL= "AgeStructuredModel", checkParameterOrder = T, silent = T)
-      EM1a_obj <- MakeADFun(EM1a_data, EM_pars, map = na_EM1a_pars, DLL= "AgeStructuredModel", checkParameterOrder = T, silent = T)
-      EM1b_obj <- MakeADFun(EM1b_data, EM_pars, map = na_EM1b_pars, DLL= "AgeStructuredModel", checkParameterOrder = T, silent = T)
-      EM1_00_obj <- MakeADFun(EM1_data_00, EM_hist_00_pars, map = na_EM1_pars_00, DLL= "AgeStructuredModel", checkParameterOrder = T, silent = T)
-      EM1a_00_obj <- MakeADFun(EM1a_data_00, EM_hist_00_pars, map = na_EM1a_pars_00, DLL= "AgeStructuredModel", checkParameterOrder = T, silent = T)
-      EM1b_00_obj <- MakeADFun(EM1b_data_00, EM_hist_00_pars, map = na_EM1b_pars_00, DLL= "AgeStructuredModel", checkParameterOrder = T, silent = T)
+      EM2_00_obj <- MakeADFun(EM2_data_00, EM_short_00_pars, map = na_EM2_pars_00, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T, silent = T)
+      EM3_00_obj <- MakeADFun(EM3_data_00, EM_short_00_pars, map = na_EM3_pars_00, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T, silent = T)
+      EM1_obj <- MakeADFun(EM1_data, EM_pars, map = na_EM1_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T, silent = T)
+      EM1a_obj <- MakeADFun(EM1a_data, EM_pars, map = na_EM1a_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T, silent = T)
+      EM1b_obj <- MakeADFun(EM1b_data, EM_pars, map = na_EM1b_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T, silent = T)
+      EM1_00_obj <- MakeADFun(EM1_data_00, EM_hist_00_pars, map = na_EM1_pars_00, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T, silent = T)
+      EM1a_00_obj <- MakeADFun(EM1a_data_00, EM_hist_00_pars, map = na_EM1a_pars_00, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T, silent = T)
+      EM1b_00_obj <- MakeADFun(EM1b_data_00, EM_hist_00_pars, map = na_EM1b_pars_00, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T, silent = T)
 
       ## Estimate
       mle_EM1 = nlminb(start = EM1_obj$par, objective = EM1_obj$fn, gradient  = EM1_obj$gr, control = list(iter.max = 10000, eval.max = 10000))

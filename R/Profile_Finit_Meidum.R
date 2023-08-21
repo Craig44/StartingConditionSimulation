@@ -13,10 +13,10 @@ library(purrr)
 
 ## Pass the OM generated data to the TMB model
 #sink(file = "compile_output.txt")
-compile(file = file.path(DIR$tmb, "AgeStructuredModel.cpp"), flags = "-Wignored-attributes -O3")
+compile(file = file.path(DIR$tmb, "AgeStructuredModel_tmp.cpp"), flags = "-Wignored-attributes -O3")
 #sink()
-#dyn.unload(dynlib(file.path(DIR$tmb, "AgeStructuredModel")))
-dyn.load(dynlib(file.path(DIR$tmb, "AgeStructuredModel")))
+#dyn.unload(dynlib(file.path(DIR$tmb, "AgeStructuredModel_tmp")))
+dyn.load(dynlib(file.path(DIR$tmb, "AgeStructuredModel_tmp")))
 #setwd(DIR$R)
 
 OM_label = "Medium_OM3"
@@ -143,7 +143,7 @@ OM_pars = list(
 
 # these parameters we are not estimating.
 na_map = fix_pars(par_list = OM_pars, pars_to_exclude = c("ln_catch_sd", "ln_sigma_r", "ln_F_init", "ln_sigma_init_age_devs"))
-OM_obj <- MakeADFun(TMB_data, OM_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
+OM_obj <- MakeADFun(TMB_data, OM_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
 
 OM_report = OM_obj$report()
 OM_report$F30_nll
@@ -223,7 +223,7 @@ EM_short_pars$ln_ycs_est = rep(0, sum(EM_short_data$ycs_estimated))
 EM_short_pars$ln_F = array(log(0.1), dim = c(EM_short_data$n_fisheries, EM_short_data$n_years))
 
 ## test
-OM_short<- MakeADFun(EM_short_data, EM_short_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
+OM_short<- MakeADFun(EM_short_data, EM_short_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
 OM_short$fn()
 
 ## OM simulations
@@ -242,7 +242,7 @@ F_init_profile_map = fix_pars(EM_short_pars, pars_to_exclude = c("ln_F_init", "l
 joint_profile_map = fix_pars(EM_short_pars, pars_to_exclude = c("ln_R0", "ln_F_init","ln_sigma_r",  "ln_init_age_devs","ln_sigma_init_age_devs", "ln_F", "ln_catch_sd", "ln_Fmax", "ln_F40", "ln_F35", "ln_F30", "ln_Fmsy", "ln_F_0_1"))
 
 ## test these pars
-test <- MakeADFun(EM2_data, EM_short_pars, map = na_EM2_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
+test <- MakeADFun(EM2_data, EM_short_pars, map = na_EM2_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
 
 EM2_convergence = array(T, dim = c(length(inital_levels), length(rebuild_levels), n_sims))
 mle_lst_EM2  = list()
@@ -287,7 +287,7 @@ for(init_ndx in 1:length(inital_levels)) {
     ## simulate YCS parameters
     OM_pars$ln_ycs_est = rnorm(sum(TMB_data$ycs_estimated), -0.5 * exp(OM_pars$ln_sigma_r) * exp(OM_pars$ln_sigma_r), exp(OM_pars$ln_sigma_r))
     ## Build OM and simulate parameters
-    OM_obj <- MakeADFun(TMB_data, OM_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
+    OM_obj <- MakeADFun(TMB_data, OM_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
     OM_sim <- OM_obj$simulate(complete = T)
     OM_sim_lst[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]][[as.character(sim_iter)]] = OM_sim
     ## Set catch for EM's
@@ -298,9 +298,9 @@ for(init_ndx in 1:length(inital_levels)) {
     EM2_data$survey_AF_obs = OM_sim$survey_AF_obs[,short_survey_year_ndx]
     EM2_data$fishery_AF_obs = array(OM_sim$fishery_AF_obs[,short_fishery_year_ndx,], dim = c(dim(OM_sim$fishery_AF_obs)[1],sum(short_fishery_year_ndx), OM_sim$n_fisheries))
     ## estimation
-    EM2_obj <- MakeADFun(EM2_data, EM_short_pars, map = na_EM2_pars, DLL= "AgeStructuredModel", checkParameterOrder = T, silent = T)
+    EM2_obj <- MakeADFun(EM2_data, EM_short_pars, map = na_EM2_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T, silent = T)
     SpatialSablefishAssessment::check_gradients(EM2_obj)
-    OM_tmp_obj <- MakeADFun(OM_sim, OM_pars, DLL= "AgeStructuredModel", checkParameterOrder = T, silent = T)
+    OM_tmp_obj <- MakeADFun(OM_sim, OM_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T, silent = T)
     OM_tmp_rep = OM_tmp_obj$report()
     OM_rep_lst[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]][[as.character(sim_iter)]] = OM_tmp_rep
 
@@ -329,7 +329,7 @@ for(init_ndx in 1:length(inital_levels)) {
     r0_pars = EM_short_pars;
     for(r0_ndx in 1:length(ln_R0_vals)) {
       r0_pars$ln_R0 = ln_R0_vals[r0_ndx]
-      EM2_obj_R0 <- MakeADFun(EM2_data, r0_pars, map = r0_profile_map, DLL= "AgeStructuredModel", checkParameterOrder = T, silent = T)
+      EM2_obj_R0 <- MakeADFun(EM2_data, r0_pars, map = r0_profile_map, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T, silent = T)
       mle_EM2_R0 = nlminb(start = EM2_obj_R0$par, objective = EM2_obj_R0$fn, gradient  = EM2_obj_R0$gr, control = list(iter.max = 10000, eval.max = 10000))
       ## check positive definite hessian
       g = as.numeric(EM2_obj_R0$gr(mle_EM2_R0$par))
@@ -344,7 +344,7 @@ for(init_ndx in 1:length(inital_levels)) {
     Finit_pars = EM_short_pars;
     for(finit_ndx in 1:length(ln_finit_vals)) {
       Finit_pars$ln_F_init  = ln_finit_vals[finit_ndx]
-      EM2_obj_Finit <- MakeADFun(EM2_data, Finit_pars, map = F_init_profile_map, DLL= "AgeStructuredModel", checkParameterOrder = T, silent = T)
+      EM2_obj_Finit <- MakeADFun(EM2_data, Finit_pars, map = F_init_profile_map, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T, silent = T)
       mle_EM2_Finit = nlminb(start = EM2_obj_Finit$par, objective = EM2_obj_Finit$fn, gradient  = EM2_obj_Finit$gr, control = list(iter.max = 10000, eval.max = 10000))
       ## check positive definite hessian
       g = as.numeric(EM2_obj_Finit$gr(mle_EM2_Finit$par))
@@ -363,7 +363,7 @@ for(init_ndx in 1:length(inital_levels)) {
         joint_pars$ln_R0 = ln_R0_vals[r0_ndx]
         joint_pars$ln_F_init  = ln_finit_vals[finit_ndx]
       
-        EM2_obj <- MakeADFun(EM2_data, joint_pars, map = joint_profile_map, DLL= "AgeStructuredModel", checkParameterOrder = T, silent = T)
+        EM2_obj <- MakeADFun(EM2_data, joint_pars, map = joint_profile_map, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T, silent = T)
         mle_EM2_joint = nlminb(start = EM2_obj$par, objective = EM2_obj$fn, gradient  = EM2_obj$gr, control = list(iter.max = 10000, eval.max = 10000))
         ## check positive definite hessian
         g = as.numeric(EM2_obj$gr(mle_EM2_joint$par))

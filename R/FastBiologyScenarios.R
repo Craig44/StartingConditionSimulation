@@ -13,14 +13,14 @@ library(purrr)
 
 ## Pass the OM generated data to the TMB model
 #sink(file = "compile_output.txt")
-compile(file = file.path(DIR$tmb, "AgeStructuredModel.cpp"), flags = "-Wignored-attributes -O3")
+compile(file = file.path(DIR$tmb, "AgeStructuredModel_tmp.cpp"), flags = "-Wignored-attributes -O3")
 #sink()
-#dyn.unload(dynlib(file.path(DIR$tmb, "AgeStructuredModel")))
-dyn.load(dynlib(file.path(DIR$tmb, "AgeStructuredModel")))
+#dyn.unload(dynlib(file.path(DIR$tmb, "AgeStructuredModel_tmp")))
+dyn.load(dynlib(file.path(DIR$tmb, "AgeStructuredModel_tmp")))
 #setwd(DIR$R)
 include_SE = T
 N_eff = 150
-OM_label = "Fast_OM3"
+OM_label = "Fast_OM4"
 output_data = file.path(DIR$data, OM_label)
 if(!dir.exists(output_data))
   dir.create(output_data)
@@ -105,7 +105,7 @@ TMB_data$mean_weight_a = this_bio$a
 TMB_data$mean_weight_b = this_bio$b
 TMB_data$estimate_F_init = 0
 TMB_data$estimate_init_age_devs = 0
-TMB_data$n_init_age_devs = max(TMB_data$ages)
+TMB_data$n_init_age_devs = max(TMB_data$ages) - 2
 
 TMB_data$rec_devs_sum_to_zero = 0
 TMB_data$Q_r_for_sum_to_zero = Q_sum_to_zero_QR(length(TMB_data$years))
@@ -141,7 +141,7 @@ OM_pars = list(
 
 # these parameters we are not estimating.
 na_map = fix_pars(par_list = OM_pars, pars_to_exclude = c("ln_catch_sd", "ln_sigma_r", "ln_F_init", "ln_init_age_devs", "ln_sigma_init_age_devs"))
-OM_obj <- MakeADFun(TMB_data, OM_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
+OM_obj <- MakeADFun(TMB_data, OM_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
 
 OM_report = OM_obj$report()
 OM_report$F30_nll
@@ -291,13 +291,13 @@ EM_pars$ln_ycs_est = rep(0, sum(EM1_data$ycs_estimated))
 n_first_ycs_to_estimate_for_historic_models
 
 ## test
-OM_short<- MakeADFun(EM_short_data, EM_short_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
+OM_short<- MakeADFun(EM_short_data, EM_short_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
 OM_short$fn()
 ## Data only until 00
-OM_short<- MakeADFun(EM_short_data_00, EM_short_00_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
+OM_short<- MakeADFun(EM_short_data_00, EM_short_00_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
 OM_short$fn()
 ## Data only until 00
-OM_short<- MakeADFun(EM_hist_data_00, EM_hist_00_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
+OM_short<- MakeADFun(EM_hist_data_00, EM_hist_00_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
 OM_short$fn()
 
 ## OM simulations
@@ -308,7 +308,7 @@ n_sims = 250
 SSB_df = recruit_df = depletion_df = NULL
 inital_levels =  c(25, 50, 75, 100) #c(25, 100)#
 rebuild_levels =  c(20, 35, 50) #c(20, 50) #
-EM1a_data = EM1b_data = EM1_data
+EM1c_data = EM1d_data = EM1a_data = EM1b_data = EM1_data
 EM2_data = EM3_data = EM_short_data
 EM2_data_00 = EM3_data_00 = EM_short_data_00
 EM1_data_00 = EM1a_data_00 = EM1b_data_00 = EM_hist_data_00
@@ -331,27 +331,28 @@ na_EM1_pars_00 = fix_pars(EM_hist_00_pars, pars_to_exclude =  c("ln_sigma_r",  "
 na_EM1a_pars_00 = fix_pars(EM_hist_00_pars, pars_to_exclude = c("ln_sigma_r",  "ln_F_init", "ln_init_age_devs","ln_sigma_init_age_devs", "ln_F", "ln_catch_sd", "ln_Fmax", "ln_F40", "ln_F35", "ln_F30", "ln_Fmsy", "ln_F_0_1"))
 na_EM1b_pars_00 = fix_pars(EM_hist_00_pars, pars_to_exclude = c("ln_sigma_r",  "ln_F_init", "ln_init_age_devs","ln_sigma_init_age_devs", "ln_F", "ln_catch_sd", "ln_Fmax", "ln_F40", "ln_F35", "ln_F30", "ln_Fmsy", "ln_F_0_1"))
 ## test these pars
-test <- MakeADFun(EM2_data, EM_short_pars, map = na_EM2_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
-test <- MakeADFun(EM3_data, EM_short_pars, map = na_EM3_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
-test <- MakeADFun(EM2_data_00, EM_short_00_pars, map = na_EM2_pars_00, DLL= "AgeStructuredModel", checkParameterOrder = T)
-test <- MakeADFun(EM3_data_00, EM_short_00_pars, map = na_EM3_pars_00, DLL= "AgeStructuredModel", checkParameterOrder = T)
-test <- MakeADFun(EM1_data, EM_pars, map = na_EM1_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
-test <- MakeADFun(EM1a_data, EM_pars, map = na_EM1a_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
-test <- MakeADFun(EM1b_data, EM_pars, map = na_EM1b_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
-test <- MakeADFun(EM1_data_00, EM_hist_00_pars, map = na_EM1_pars_00, DLL= "AgeStructuredModel", checkParameterOrder = T)
-test <- MakeADFun(EM1a_data_00, EM_hist_00_pars, map = na_EM1a_pars_00, DLL= "AgeStructuredModel", checkParameterOrder = T)
-test <- MakeADFun(EM1b_data_00, EM_hist_00_pars, map = na_EM1b_pars_00, DLL= "AgeStructuredModel", checkParameterOrder = T)
+test <- MakeADFun(EM2_data, EM_short_pars, map = na_EM2_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
+test <- MakeADFun(EM3_data, EM_short_pars, map = na_EM3_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
+test <- MakeADFun(EM2_data_00, EM_short_00_pars, map = na_EM2_pars_00, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
+test <- MakeADFun(EM3_data_00, EM_short_00_pars, map = na_EM3_pars_00, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
+test <- MakeADFun(EM1_data, EM_pars, map = na_EM1_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
+test <- MakeADFun(EM1a_data, EM_pars, map = na_EM1a_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
+test <- MakeADFun(EM1b_data, EM_pars, map = na_EM1b_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
+test <- MakeADFun(EM1_data_00, EM_hist_00_pars, map = na_EM1_pars_00, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
+test <- MakeADFun(EM1a_data_00, EM_hist_00_pars, map = na_EM1a_pars_00, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
+test <- MakeADFun(EM1b_data_00, EM_hist_00_pars, map = na_EM1b_pars_00, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
 
-EM1_convergence = EM1a_convergence = EM1b_convergence = EM1_00_convergence = EM1a_00_convergence = EM1b_00_convergence = 
+EM1_convergence = EM1a_convergence = EM1b_convergence = EM1c_convergence = EM1d_convergence = EM1_00_convergence = EM1a_00_convergence = EM1b_00_convergence = 
   EM2_convergence = EM3_convergence = EM2_00_convergence = EM3_00_convergence = array(T, dim = c(length(inital_levels), length(rebuild_levels), n_sims))
-mle_lst_EM1 = mle_lst_EM1a = mle_lst_EM1b = mle_lst_EM2 = mle_lst_EM3 = list()
+mle_lst_EM1 = mle_lst_EM1a = mle_lst_EM1b = mle_lst_EM1c = mle_lst_EM1d =mle_lst_EM2 = mle_lst_EM3 = list()
 mle_lst_EM1_00 = mle_lst_EM1a_00 = mle_lst_EM1b_00 = mle_lst_EM2_00 = mle_lst_EM3_00 = list()
-se_lst_EM1 = se_lst_EM1a = se_lst_EM1b = se_lst_EM2 = se_lst_EM3 = list()
+se_lst_EM1 = se_lst_EM1a = se_lst_EM1b = se_lst_EM1c = se_lst_EM1d = se_lst_EM2 = se_lst_EM3 = list()
 se_lst_EM1_00 = se_lst_EM1a_00 = se_lst_EM1b_00 = se_lst_EM2_00 = se_lst_EM3_00 = list()
 OM_sim_lst = OM_rep_lst = list()
 under_over_reporting_fraction = 0.25 ## 25%
 EM_short_pars$ln_F_init = log(0.07)
 EM_short_00_pars$ln_F_init = log(0.07)
+linear_reporting = seq(from = 0.5, to = 0, length = n_years_historic)
 #####
 # Start Simulations
 # 
@@ -389,11 +390,11 @@ for(init_ndx in 1:length(inital_levels)) {
       ## simulate YCS parameters
       OM_pars$ln_ycs_est = rnorm(sum(TMB_data$ycs_estimated), -0.5 * exp(OM_pars$ln_sigma_r) * exp(OM_pars$ln_sigma_r), exp(OM_pars$ln_sigma_r))
       ## Build OM and simulate parameters
-      OM_obj <- MakeADFun(TMB_data, OM_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
+      OM_obj <- MakeADFun(TMB_data, OM_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
       OM_sim <- OM_obj$simulate(complete = T)
       OM_sim_lst[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]][[as.character(sim_iter)]] = OM_sim
       ## Set catch for EM's
-      EM1b_data$catches = EM1a_data$catches = EM1_data$catches = OM_sim$catches     ## self test
+      EM1d_data$catches = EM1c_data$catches = EM1b_data$catches = EM1a_data$catches = EM1_data$catches = OM_sim$catches     ## self test
       EM1a_data$catches[1:n_years_historic, ] = matrix(OM_sim$catches[1:n_years_historic, ] * (1 + under_over_reporting_fraction), ncol = 1) ## over-reported
       EM1b_data$catches[1:n_years_historic, ] = matrix(OM_sim$catches[1:n_years_historic, ] * (1 - under_over_reporting_fraction), ncol = 1) ## under-reported
       EM2_data$catches = EM3_data$catches = matrix(OM_sim$catches[data_year_ndx, ], ncol = 1)
@@ -401,11 +402,15 @@ for(init_ndx in 1:length(inital_levels)) {
       EM1_data_00$catches = EM1a_data_00$catches =  EM1b_data_00$catches = matrix(OM_sim$catches[data_hist_year_00_ndx, ], ncol = 1)
       EM1a_data_00$catches[1:n_years_historic, ] = matrix(EM1a_data_00$catches[1:n_years_historic, ] * (1 + under_over_reporting_fraction), ncol = 1)
       EM1b_data_00$catches[1:n_years_historic, ] = matrix(EM1b_data_00$catches[1:n_years_historic, ] * (1 - under_over_reporting_fraction), ncol = 1)
+      
+      
+      EM1c_data$catches[1:n_years_historic, ] = matrix(OM_sim$catches[1:n_years_historic, ] * (1 + linear_reporting), ncol = 1) ## under-reported
+      EM1d_data$catches[1:n_years_historic, ] = matrix(OM_sim$catches[1:n_years_historic, ] * (1 - linear_reporting), ncol = 1) ## under-reported
       ## observations
-      EM1_data$survey_obs = EM1a_data$survey_obs = EM1b_data$survey_obs = OM_sim$survey_obs
-      EM1_data$survey_cv = EM1a_data$survey_cv = EM1b_data$survey_cv = OM_sim$survey_cv
-      EM1_data$survey_AF_obs = EM1a_data$survey_AF_obs = EM1b_data$survey_AF_obs = OM_sim$survey_AF_obs
-      EM1_data$fishery_AF_obs = EM1a_data$fishery_AF_obs = EM1b_data$fishery_AF_obs = OM_sim$fishery_AF_obs
+      EM1c_data$survey_obs = EM1d_data$survey_obs = EM1_data$survey_obs = EM1a_data$survey_obs = EM1b_data$survey_obs = OM_sim$survey_obs
+      EM1c_data$survey_cv = EM1d_data$survey_cv =EM1_data$survey_cv = EM1a_data$survey_cv = EM1b_data$survey_cv = OM_sim$survey_cv
+      EM1c_data$survey_AF_obs = EM1d_data$survey_AF_obs = EM1_data$survey_AF_obs = EM1a_data$survey_AF_obs = EM1b_data$survey_AF_obs = OM_sim$survey_AF_obs
+      EM1c_data$fishery_AF_obs = EM1d_data$fishery_AF_obs = EM1_data$fishery_AF_obs = EM1a_data$fishery_AF_obs = EM1b_data$fishery_AF_obs = OM_sim$fishery_AF_obs
       
       EM2_data$survey_obs = EM3_data$survey_obs = OM_sim$survey_obs[short_survey_year_ndx]
       EM2_data$survey_cv = EM3_data$survey_cv = OM_sim$survey_cv[short_survey_year_ndx]
@@ -422,21 +427,23 @@ for(init_ndx in 1:length(inital_levels)) {
       EM1_data_00$survey_AF_obs = EM1a_data_00$survey_AF_obs = EM1b_data_00$survey_AF_obs = OM_sim$survey_AF_obs[,survey_year_obs %in% survey_year_obs_hist_00]
       EM1_data_00$fishery_AF_obs = EM1a_data_00$fishery_AF_obs = EM1b_data_00$fishery_AF_obs = array(OM_sim$fishery_AF_obs[,fishery_year_obs %in% fishery_year_obs_hist_00,], dim = c(dim(OM_sim$fishery_AF_obs)[1],sum(fishery_year_ndx_hist_00), OM_sim$n_fisheries))
       ## estimation
-      EM2_obj <- MakeADFun(EM2_data, EM_short_pars, map = na_EM2_pars, DLL= "AgeStructuredModel", checkParameterOrder = T, silent = T)
+      EM2_obj <- MakeADFun(EM2_data, EM_short_pars, map = na_EM2_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T, silent = T)
       #SpatialSablefishAssessment::check_gradients(EM2_obj)
-      EM3_obj <- MakeADFun(EM3_data, EM_short_pars, map = na_EM3_pars, DLL= "AgeStructuredModel", checkParameterOrder = T, silent = T)
+      EM3_obj <- MakeADFun(EM3_data, EM_short_pars, map = na_EM3_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T, silent = T)
       #SpatialSablefishAssessment::check_gradients(EM3_obj)
-      OM_tmp_obj <- MakeADFun(OM_sim, OM_pars, DLL= "AgeStructuredModel", checkParameterOrder = T, silent = T)
+      OM_tmp_obj <- MakeADFun(OM_sim, OM_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T, silent = T)
       OM_tmp_rep = OM_tmp_obj$report()
       OM_rep_lst[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]][[as.character(sim_iter)]] = OM_tmp_rep
-      EM2_00_obj <- MakeADFun(EM2_data_00, EM_short_00_pars, map = na_EM2_pars_00, DLL= "AgeStructuredModel", checkParameterOrder = T, silent = T)
-      EM3_00_obj <- MakeADFun(EM3_data_00, EM_short_00_pars, map = na_EM3_pars_00, DLL= "AgeStructuredModel", checkParameterOrder = T, silent = T)
-      EM1_obj <- MakeADFun(EM1_data, EM_pars, map = na_EM1_pars, DLL= "AgeStructuredModel", checkParameterOrder = T, silent = T)
-      EM1a_obj <- MakeADFun(EM1a_data, EM_pars, map = na_EM1a_pars, DLL= "AgeStructuredModel", checkParameterOrder = T, silent = T)
-      EM1b_obj <- MakeADFun(EM1b_data, EM_pars, map = na_EM1b_pars, DLL= "AgeStructuredModel", checkParameterOrder = T, silent = T)
-      EM1_00_obj <- MakeADFun(EM1_data_00, EM_hist_00_pars, map = na_EM1_pars_00, DLL= "AgeStructuredModel", checkParameterOrder = T, silent = T)
-      EM1a_00_obj <- MakeADFun(EM1a_data_00, EM_hist_00_pars, map = na_EM1a_pars_00, DLL= "AgeStructuredModel", checkParameterOrder = T, silent = T)
-      EM1b_00_obj <- MakeADFun(EM1b_data_00, EM_hist_00_pars, map = na_EM1b_pars_00, DLL= "AgeStructuredModel", checkParameterOrder = T, silent = T)
+      EM2_00_obj <- MakeADFun(EM2_data_00, EM_short_00_pars, map = na_EM2_pars_00, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T, silent = T)
+      EM3_00_obj <- MakeADFun(EM3_data_00, EM_short_00_pars, map = na_EM3_pars_00, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T, silent = T)
+      EM1_obj <- MakeADFun(EM1_data, EM_pars, map = na_EM1_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T, silent = T)
+      EM1a_obj <- MakeADFun(EM1a_data, EM_pars, map = na_EM1a_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T, silent = T)
+      EM1b_obj <- MakeADFun(EM1b_data, EM_pars, map = na_EM1b_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T, silent = T)
+      EM1c_obj <- MakeADFun(EM1c_data, EM_pars, map = na_EM1_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T, silent = T)
+      EM1d_obj <- MakeADFun(EM1d_data, EM_pars, map = na_EM1_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T, silent = T)
+      EM1_00_obj <- MakeADFun(EM1_data_00, EM_hist_00_pars, map = na_EM1_pars_00, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T, silent = T)
+      EM1a_00_obj <- MakeADFun(EM1a_data_00, EM_hist_00_pars, map = na_EM1a_pars_00, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T, silent = T)
+      EM1b_00_obj <- MakeADFun(EM1b_data_00, EM_hist_00_pars, map = na_EM1b_pars_00, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T, silent = T)
       
       ## Estimate
       mle_EM1 = nlminb(start = EM1_obj$par, objective = EM1_obj$fn, gradient  = EM1_obj$gr, control = list(iter.max = 10000, eval.max = 10000))
@@ -511,7 +518,54 @@ for(init_ndx in 1:length(inital_levels)) {
           se_lst_EM1b[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]][[as.character(sim_iter)]] = EM1b_se
         }
       }
+      ## EM1c
+      mle_EM1c = nlminb(start = EM1c_obj$par, objective = EM1c_obj$fn, gradient  = EM1c_obj$gr, control = list(iter.max = 10000, eval.max = 10000))
+      try_improve = tryCatch(expr =
+                               for(i in 1:2) {
+                                 g = as.numeric(EM1c_obj$gr(mle_EM1c$par))
+                                 h = optimHess(mle_EM1c$par, fn = EM1c_obj$fn, gr = EM1c_obj$gr)
+                                 mle_EM1c$par = mle_EM1c$par - solve(h,g)
+                                 mle_EM1c$objective = EM1c_obj$fn(mle_EM1c$par)
+                               }
+                             , error = function(e){e})
       
+      if(inherits(try_improve, "error") | inherits(try_improve, "warning")) {
+        cat("Failed simulation EM1c, sim ", sim_iter, "\n")
+        EM1c_convergence[init_ndx, rebuild_ndx, sim_iter] = F
+        next;
+      } else {
+        ## save the output
+        EM1c_rep = EM1c_obj$report(mle_EM1c$par)
+        mle_lst_EM1c[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]][[as.character(sim_iter)]] = EM1c_rep
+        if(include_SE) {
+          EM1c_se = sdreport(EM1c_obj)
+          se_lst_EM1c[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]][[as.character(sim_iter)]] = EM1c_se
+        }
+      }
+      ## EM1d
+      mle_EM1d = nlminb(start = EM1d_obj$par, objective = EM1d_obj$fn, gradient  = EM1d_obj$gr, control = list(iter.max = 10000, eval.max = 10000))
+      try_improve = tryCatch(expr =
+                               for(i in 1:2) {
+                                 g = as.numeric(EM1d_obj$gr(mle_EM1d$par))
+                                 h = optimHess(mle_EM1d$par, fn = EM1d_obj$fn, gr = EM1d_obj$gr)
+                                 mle_EM1d$par = mle_EM1d$par - solve(h,g)
+                                 mle_EM1d$objective = EM1d_obj$fn(mle_EM1d$par)
+                               }
+                             , error = function(e){e})
+      
+      if(inherits(try_improve, "error") | inherits(try_improve, "warning")) {
+        cat("Failed simulation EM1d, sim ", sim_iter, "\n")
+        EM1d_convergence[init_ndx, rebuild_ndx, sim_iter] = F
+        next;
+      } else {
+        ## save the output
+        EM1d_rep = EM1d_obj$report(mle_EM1d$par)
+        mle_lst_EM1d[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]][[as.character(sim_iter)]] = EM1d_rep
+        if(include_SE) {
+          EM1d_se = sdreport(EM1d_obj)
+          se_lst_EM1d[[as.character(inital_levels[init_ndx])]][[as.character(rebuild_levels[rebuild_ndx])]][[as.character(sim_iter)]] = EM1d_se
+        }
+      }
       ## EM2
       mle_EM2 = nlminb(start = EM2_obj$par, objective = EM2_obj$fn, gradient  = EM2_obj$gr, control = list(iter.max = 10000, eval.max = 10000))
       try_improve = tryCatch(expr =
@@ -692,6 +746,8 @@ for(init_ndx in 1:length(inital_levels)) {
 saveRDS(object = mle_lst_EM1, file = file.path(output_data, "mle_lst_EM1.RDS"))
 saveRDS(object = mle_lst_EM1a, file = file.path(output_data, "mle_lst_EM1a.RDS"))
 saveRDS(object = mle_lst_EM1b, file = file.path(output_data, "mle_lst_EM1b.RDS"))
+saveRDS(object = mle_lst_EM1c, file = file.path(output_data, "mle_lst_EM1c.RDS"))
+saveRDS(object = mle_lst_EM1d, file = file.path(output_data, "mle_lst_EM1d.RDS"))
 saveRDS(object = mle_lst_EM2, file = file.path(output_data, "mle_lst_EM2.RDS"))
 saveRDS(object = mle_lst_EM3, file = file.path(output_data, "mle_lst_EM3.RDS"))
 saveRDS(object = mle_lst_EM1_00, file = file.path(output_data, "mle_lst_EM1_00.RDS"))
@@ -707,6 +763,8 @@ saveRDS(object = OM_rep_lst, file = file.path(output_data, "OM_rep_lst.RDS"))
 saveRDS(object = se_lst_EM1, file = file.path(output_data, "se_lst_EM1.RDS"))
 saveRDS(object = se_lst_EM1a, file = file.path(output_data, "se_lst_EM1a.RDS"))
 saveRDS(object = se_lst_EM1b, file = file.path(output_data, "se_lst_EM1b.RDS"))
+saveRDS(object = se_lst_EM1c, file = file.path(output_data, "se_lst_EM1c.RDS"))
+saveRDS(object = se_lst_EM1d, file = file.path(output_data, "se_lst_EM1d.RDS"))
 saveRDS(object = se_lst_EM2, file = file.path(output_data, "se_lst_EM2.RDS"))
 saveRDS(object = se_lst_EM3, file = file.path(output_data, "se_lst_EM3.RDS"))
 
@@ -714,6 +772,8 @@ saveRDS(object = se_lst_EM3, file = file.path(output_data, "se_lst_EM3.RDS"))
 saveRDS(object = EM1_convergence, file = file.path(output_data, "convergence_EM1.RDS"))
 saveRDS(object = EM1a_convergence, file = file.path(output_data, "convergence_EM1a.RDS"))
 saveRDS(object = EM1b_convergence, file = file.path(output_data, "convergence_EM1b.RDS"))
+saveRDS(object = EM1c_convergence, file = file.path(output_data, "convergence_EM1c.RDS"))
+saveRDS(object = EM1d_convergence, file = file.path(output_data, "convergence_EM1d.RDS"))
 saveRDS(object = EM2_convergence, file = file.path(output_data, "convergence_EM2.RDS"))
 saveRDS(object = EM3_convergence, file = file.path(output_data, "convergence_EM3.RDS"))
 saveRDS(object = EM1_00_convergence, file = file.path(output_data, "convergence_EM1_00.RDS"))

@@ -1,0 +1,13 @@
+rebuild init EM1 EM1a EM1b EM2 EM3
+rebuild 20 init 25 0.956 0 0 0.196 0.136
+rebuild 35 init 25 0.96 0 0 0.232 0.2
+rebuild 50 init 25 0.932 0 0 0.292 0.252
+rebuild 20 init 50 0.94 0 0 0.168 0.156
+rebuild 35 init 50 0.928 0 0 0.24 0.18
+rebuild 50 init 50 0.976 0 0 0.312 0.216
+rebuild 20 init 75 0.976 0.128 0.208 0.136 0.152
+rebuild 35 init 75 0.948 0.188 0.252 0.224 0.22
+rebuild 50 init 75 0.944 0.388 0.416 0.3 0.216
+rebuild 20 init 100 0.956 0.956 0.956 0.224 0.26
+rebuild 35 init 100 0.972 0.972 0.972 0.3 0.296
+rebuild 50 init 100 0.964 0.964 0.964 0.42 0.296

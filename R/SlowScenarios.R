@@ -9,10 +9,10 @@ library(TMB)
 library(tidyr)
 ## Pass the OM generated data to the TMB model
 #sink(file = "compile_output.txt")
-compile(file = file.path(DIR$tmb, "AgeStructuredModel.cpp"), flags = "-Wignored-attributes -O3")
+compile(file = file.path(DIR$tmb, "AgeStructuredModel_tmp.cpp"), flags = "-Wignored-attributes -O3")
 #sink()
-#dyn.unload(dynlib(file.path(DIR$tmb, "AgeStructuredModel")))
-dyn.load(dynlib(file.path(DIR$tmb, "AgeStructuredModel")))
+#dyn.unload(dynlib(file.path(DIR$tmb, "AgeStructuredModel_tmp")))
+dyn.load(dynlib(file.path(DIR$tmb, "AgeStructuredModel_tmp")))
 #setwd(DIR$R)
 
 
@@ -109,7 +109,7 @@ OM_pars = list(
 
 # these parameters we are not estimating.
 na_map = fix_pars(par_list = OM_pars, pars_to_exclude = c("ln_catch_sd", "ln_extra_survey_cv","ln_sigma_r", "ln_F_init", "ln_init_age_devs", "ln_sigma_init_age_devs"))
-OM_obj <- MakeADFun(TMB_data, OM_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
+OM_obj <- MakeADFun(TMB_data, OM_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
 
 OM_report = OM_obj$report()
 OM_report$F30_nll
@@ -158,7 +158,7 @@ OM_pars$ln_ycs_est =  rep(0,sum(TMB_data$ycs_estimated))# rnorm(sum(TMB_data$ycs
 TMB_data$F_method = 0
 ## re run the OM with true values so 
 ## we can check the log-likelihood calculations
-OM_obj <- MakeADFun(TMB_data, OM_pars, DLL= "AgeStructuredModel", checkParameterOrder = T)
+OM_obj <- MakeADFun(TMB_data, OM_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = T)
 OM_report = OM_obj$report()
 
 # Plot SSB with deterministic recruitment
@@ -175,7 +175,7 @@ for(sim_iter in 1:n_sims) {
   ## simulate recruitment
   OM_pars$ln_ycs_est = rnorm(sum(TMB_data$ycs_estimated),  -0.5*this_bio$sigma_r^2, this_bio$sigma_r)
   ## run model
-  OM_obj <- MakeADFun(TMB_data, OM_pars, DLL= "AgeStructuredModel", checkParameterOrder = F, silent = T)
+  OM_obj <- MakeADFun(TMB_data, OM_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = F, silent = T)
   OM_report = OM_obj$report()
   ## save SSB
   this_ssb = data.frame(years = full_years, SSB = OM_report$ssb, sim_iter = sim_iter)
@@ -214,7 +214,7 @@ TMB_data$estimate_init_age_devs = 1
 TMB_data$n_init_age_devs = 50
 OM_pars$ln_sigma_init_age_devs = log(0.5)
 OM_pars$ln_init_age_devs = rnorm(TMB_data$n_init_age_devs, 0, exp(OM_pars$ln_sigma_init_age_devs))
-OM_obj <- MakeADFun(TMB_data, OM_pars, DLL= "AgeStructuredModel", checkParameterOrder = F, silent = T)
+OM_obj <- MakeADFun(TMB_data, OM_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = F, silent = T)
 OM_report = OM_obj$report()
 OM_report$B0
 OM_report$Binit
@@ -231,7 +231,7 @@ for(sim_iter in 1:n_sims) {
   ## simulate recruitment
   OM_pars$ln_ycs_est = rnorm(sum(TMB_data$ycs_estimated),  -0.5*this_bio$sigma_r^2, this_bio$sigma_r)
   ## run model
-  OM_obj <- MakeADFun(TMB_data, OM_pars, DLL= "AgeStructuredModel", checkParameterOrder = F, silent = T)
+  OM_obj <- MakeADFun(TMB_data, OM_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = F, silent = T)
   OM_report = OM_obj$report()
   ## save SSB
   this_ssb = data.frame(years = full_years, SSB = OM_report$ssb, sim_iter = sim_iter)
@@ -354,12 +354,12 @@ for(start_year_ndx in 1:length(start_year)) {
       TMB_data$estimate_init_age_devs = 0
     }
     ## Build OM model
-    OM_obj <- MakeADFun(TMB_data, OM_pars, DLL= "AgeStructuredModel", checkParameterOrder = F, silent = T)
+    OM_obj <- MakeADFun(TMB_data, OM_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = F, silent = T)
     ## Simulate data
     OM_sim = OM_obj$simulate(complete = T)
     ## OM_true values
     OM_sim$F_method = 1
-    OM_true_obj <- MakeADFun(OM_sim, OM_pars, DLL= "AgeStructuredModel", checkParameterOrder = F, silent = T)
+    OM_true_obj <- MakeADFun(OM_sim, OM_pars, DLL= "AgeStructuredModel_tmp", checkParameterOrder = F, silent = T)
     OM_report = OM_true_obj$report()
     OM_nll = data.frame(total = OM_true_obj$fn(), catch = OM_report$catch_nll, recruitment = OM_report$recruit_nll, survey_ndx = OM_report$survey_index_nll, survey_AF = OM_report$survey_comp_nll, fishery_AF = OM_report$fishery_comp_nll)
     OM_nll$model = "OM"
@@ -389,7 +389,7 @@ for(start_year_ndx in 1:length(start_year)) {
     EM_data$estimate_init_age_devs = 0
     
     ## build EM
-    EM_obj <- MakeADFun(EM_data, EM_pars, map = na_map, DLL= "AgeStructuredModel", checkParameterOrder = F, silent = T)
+    EM_obj <- MakeADFun(EM_data, EM_pars, map = na_map, DLL= "AgeStructuredModel_tmp", checkParameterOrder = F, silent = T)
 
     ## optimise
     #cbind(start_EM_rep$equilibrium_at_age, start_EM_rep$N[,1])

@@ -63,6 +63,19 @@ vector<Type> logistic_ogive(vector<Type> ages, Type sel_50, Type sel_95) {
   }
   return logis;
 }
+
+// logistic ogive function
+template <class Type> 
+vector<Type> logistic_ogive_alt(vector<Type> ages, Type sel_50, Type slope) {
+  std::cout << "logistic_ogive\n";
+  int n_ages = ages.size();
+  vector<Type> logis(n_ages);
+  //1/(1 + exp(-slope * (X - a50)))
+  for (int age = 0;  age < n_ages; ++age) {
+    logis[age] = Type(1.0) / (Type(1.0) + exp(-slope * (ages[age] - sel_50)));
+  }
+  return logis;
+}
 /*
  * Geometric mean
  */
@@ -179,7 +192,7 @@ Type BevertonHoltNoEquil(Type a, Type b, Type SSB) {
  */
 
 template<class Type>
-Type get_SPR(Type F, vector<Type>& sel, Type& natural_mortality, vector<Type>& waa, vector<Type>& paa, Type propZ_ssb, vector<Type>& ages) {
+Type get_SPR(Type F, vector<Type> sel, Type natural_mortality, vector<Type> waa, vector<Type> paa, Type propZ_ssb, vector<Type> ages) {
   Type Na = 1;
   vector<Type> Za = natural_mortality + sel * F;
   vector<Type> Sa = exp(-Za);
@@ -196,6 +209,25 @@ Type get_SPR(Type F, vector<Type>& sel, Type& natural_mortality, vector<Type>& w
   return SPR;
 }
 
+template<class Type>
+Type get_SPR_alt(Type F, vector<Type> sel, Type natural_mortality, vector<Type> waa, vector<Type> paa, Type propZ_ssb, vector<Type> ages) {
+  vector<Type> Na(ages.size());
+  vector<Type> Na_for_ssb(ages.size());
+  Na(0) = 1.0;
+  vector<Type> Za = natural_mortality + sel * F;
+  vector<Type> Sa = exp(-Za);
+  Na_for_ssb(0) = 1.0 * exp(-Za(0) * propZ_ssb);
+  for(unsigned age_iter = 1; age_iter < ages.size(); ++age_iter) {
+    Na(age_iter) = Na(age_iter - 1) * Sa(age_iter - 1);
+    Na_for_ssb(age_iter) = Na(age_iter) * exp(-Za(age_iter) * propZ_ssb);
+  }
+  // plus group
+  Na(ages.size() - 1) = Na(ages.size() - 1)  / (1.0 - exp(-Za(ages.size() - 1)));
+  Na_for_ssb(ages.size() - 1) = Na(ages.size() - 1) * exp(-Za(ages.size() - 1) * propZ_ssb);
+  Type SPR = (Na_for_ssb * waa *  paa).sum();
+  
+  return SPR;
+}
 // Calculate Yeild per recruit
 /*
  * @param F F to test

@@ -72,6 +72,7 @@ TMB_data$F_max = 3
 
 TMB_data$catch_indicator = array(1, dim = c(TMB_data$n_years, TMB_data$n_fisheries))
 TMB_data$ycs_estimated = c(rep(1, n_years))
+TMB_data$ycs_bias_correction = c(rep(1, n_years))
 TMB_data$standardise_ycs = 0;
 
 TMB_data$catchMeanLength = TMB_data$stockMeanLength = matrix(vonbert(this_bio$ages, this_bio$K, L_inf = this_bio$L_inf, t0 = this_bio$t0), byrow = F, ncol = TMB_data$n_years, nrow = TMB_data$n_ages)

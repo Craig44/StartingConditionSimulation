@@ -272,7 +272,8 @@ Type objective_function<Type>::operator() () {
       }
     }
   }
-   
+
+
   /*
    * Initialise first year
    */
@@ -281,6 +282,11 @@ Type objective_function<Type>::operator() () {
     N(age_ndx, 0) = R0 * exp(-(ages(age_ndx)) * natMor);
   if(maxAgePlusGroup == 1)
     N(n_ages - 1, 0) = R0 * exp(- ages(n_ages - 1) * natMor) / (1.0 - exp(-natMor));
+  /*
+   * Calcualte SPR for B0
+   */
+  Type SPR_0 = get_SPR(0.0, fishery_selectivity.col(0), natMor, stockMeanWeight.col(0).vec(), propMat.col(0).vec(), propZ_ssb,ages);
+  Type SPR_Finit = 0;
   // Applying ageing
   temp_partition = N.col(0);
   N((n_ages - 1), 0) += N(n_ages - 2, 0);
@@ -292,7 +298,11 @@ Type objective_function<Type>::operator() () {
   vector<Type> init_Z(n_ages);
   init_Z.fill(natMor);
   // Binit - which is the same as above but 
+  
   if(estimate_F_init == 1) {
+    SPR_Finit = get_SPR(F_init, fishery_selectivity.col(0), natMor, stockMeanWeight.col(0).vec(), propMat.col(0).vec(), propZ_ssb,ages);
+    REPORT(F_init);
+    
     //std::cerr << "applying F-init\n";
     for(age_ndx = 0; age_ndx < n_ages; ++age_ndx) {
       N(age_ndx, 0) = R0 * exp(-(ages(age_ndx)) * (natMor + fishery_selectivity(age_ndx,0) * F_init));
